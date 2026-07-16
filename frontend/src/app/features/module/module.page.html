@@ -1,0 +1,340 @@
+<div class="page-shell module-page">
+  <div class="page-header">
+    <div>
+      <div class="eyebrow">{{ definition().eyebrow }}</div>
+      <h1 class="page-title">{{ definition().title }}</h1>
+      <p class="page-description">{{ definition().description }}</p>
+    </div>
+    <div class="header-actions">
+      <button mat-stroked-button (click)="exportCsv()" [disabled]="!rows().length">
+        <mat-icon>download</mat-icon>Export CSV
+      </button>
+      @for (action of view().toolbarActions ?? []; track action.label) {
+        <button mat-stroked-button (click)="openToolbarAction(action)">
+          <mat-icon>{{ action.icon }}</mat-icon
+          >{{ action.label }}
+        </button>
+      }
+      @if (view().createEndpoint) {
+        <button mat-raised-button class="primary-button" (click)="openCreate()">
+          <mat-icon>add</mat-icon>{{ view().createLabel }}
+        </button>
+      }
+    </div>
+  </div>
+
+  @if (success()) {
+    <div class="success-banner">
+      <mat-icon>check_circle</mat-icon><span>{{ success() }}</span
+      ><button mat-icon-button (click)="success.set('')"><mat-icon>close</mat-icon></button>
+    </div>
+  }
+
+  <section class="metric-grid module-metrics">
+    @for (metric of definition().highlights; track metric.label) {
+      <article class="app-card metric-card" [attr.data-tone]="metric.tone">
+        <div class="metric-label">{{ metric.label }}</div>
+        <div class="metric-value">{{ metric.value }}</div>
+        <div class="metric-trend">{{ metric.trend }}</div>
+      </article>
+    }
+  </section>
+
+  @if (definition().views.length > 1) {
+    <div class="workspace-tabs">
+      @for (tab of definition().views; track tab.label; let i = $index) {
+        <button [class.active]="activeTab() === i" (click)="selectTab(i)">
+          <mat-icon>{{ tab.icon ?? definition().icon }}</mat-icon
+          >{{ tab.label }}
+        </button>
+      }
+    </div>
+  }
+
+  <section class="app-card table-card">
+    <div class="table-toolbar">
+      <div class="search-field">
+        <mat-icon>search</mat-icon
+        ><input
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+          (keydown.enter)="load(1)"
+          [placeholder]="'Search ' + view().label.toLowerCase()"
+        />
+      </div>
+      <form class="inline-filters" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+        @for (filter of view().filters ?? []; track filter.key) {
+          @if (filter.type === 'select') {
+            <select [formControlName]="filter.key">
+              <option value="">All {{ filter.label.toLowerCase() }}</option>
+              @for (item of optionsFor(filter); track item.value) {
+                <option [ngValue]="item.value">{{ item.label }}</option>
+              }
+            </select>
+          } @else {
+            <input
+              [type]="filter.type ?? 'text'"
+              [formControlName]="filter.key"
+              [placeholder]="filter.label"
+            />
+          }
+        }
+        @if ((view().filters?.length ?? 0) > 0) {
+          <button mat-stroked-button type="submit"><mat-icon>filter_list</mat-icon>Apply</button
+          ><button
+            mat-icon-button
+            type="button"
+            (click)="clearFilters()"
+            aria-label="Clear filters"
+          >
+            <mat-icon>filter_list_off</mat-icon>
+          </button>
+        }
+      </form>
+      <span class="result-count">{{ total() }} records</span>
+    </div>
+
+    @if (error() && !drawerOpen()) {
+      <div class="module-error">
+        <mat-icon>cloud_off</mat-icon>
+        <div>
+          <b>Workspace unavailable</b><span>{{ error() }}</span>
+        </div>
+        <button mat-stroked-button (click)="load(page())">Try again</button>
+      </div>
+    } @else if (loading()) {
+      <div class="loading-table">
+        @for (row of [1, 2, 3, 4, 5]; track row) {
+          <div class="skeleton"></div>
+        }
+      </div>
+    } @else if (!rows().length) {
+      <div class="empty-state">
+        <mat-icon>{{ definition().icon }}</mat-icon>
+        <h3>No {{ view().label.toLowerCase() }} yet</h3>
+        <p>{{ view().emptyMessage ?? 'No records match the current search and filters.' }}</p>
+        @if (view().createEndpoint) {
+          <button mat-raised-button class="primary-button" (click)="openCreate()">
+            {{ view().createLabel }}
+          </button>
+        }
+      </div>
+    } @else {
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              @for (column of view().columns; track column.key) {
+                <th>{{ column.label }}</th>
+              }
+              @if ((view().rowActions?.length ?? 0) > 0) {
+                <th>Actions</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of rows(); track row['id'] ?? $index) {
+              <tr>
+                @for (column of view().columns; track column.key) {
+                  <td>
+                    @switch (column.type) {
+                      @case ('status') {
+                        <span [class]="'status-pill ' + statusClass(value(row, column.key))">{{
+                          display(value(row, column.key), column.key)
+                        }}</span>
+                      }
+                      @case ('date') {
+                        <span>{{
+                          dateValue(row, column.key)
+                            ? (dateValue(row, column.key) | date: 'd MMM yyyy, HH:mm')
+                            : '—'
+                        }}</span>
+                      }
+                      @case ('currency') {
+                        <b>{{
+                          +(value(row, column.key) ?? 0)
+                            | currency: (row['currency'] ?? 'USD')!.toString() : 'symbol' : '1.0-2'
+                        }}</b>
+                      }
+                      @case ('number') {
+                        <b>{{ +(value(row, column.key) ?? 0) | number: '1.0-2' }}</b>
+                      }
+                      @default {
+                        <span
+                          class="cell-value"
+                          [title]="display(value(row, column.key), column.key)"
+                          >{{ display(value(row, column.key), column.key) }}</span
+                        >
+                      }
+                    }
+                  </td>
+                }
+                @if ((view().rowActions?.length ?? 0) > 0) {
+                  <td>
+                    <button
+                      mat-icon-button
+                      [matMenuTriggerFor]="rowMenu"
+                      aria-label="Record actions"
+                    >
+                      <mat-icon>more_horiz</mat-icon></button
+                    ><mat-menu #rowMenu="matMenu">
+                      @for (action of view().rowActions ?? []; track action.label) {
+                        @if (actionVisible(action, row)) {
+                          <button
+                            mat-menu-item
+                            (click)="runRowAction(action, row)"
+                            [class.danger-action]="action.tone === 'danger'"
+                          >
+                            <mat-icon>{{ action.icon }}</mat-icon
+                            >{{ action.label }}
+                          </button>
+                        }
+                      }
+                    </mat-menu>
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <div class="table-pagination">
+        <span>Showing {{ rows().length }} of {{ total() }} records</span>
+        <div>
+          <button mat-icon-button [disabled]="page() <= 1" (click)="load(page() - 1)">
+            <mat-icon>chevron_left</mat-icon></button
+          ><span>Page {{ page() }}</span
+          ><button
+            mat-icon-button
+            [disabled]="view().listShape !== 'paged' || rows().length < pageSize"
+            (click)="load(page() + 1)"
+          >
+            <mat-icon>chevron_right</mat-icon>
+          </button>
+        </div>
+      </div>
+    }
+  </section>
+</div>
+
+@if (drawerOpen()) {
+  <div class="drawer-overlay" (click)="closeDrawer()"></div>
+  <aside class="form-drawer">
+    <div class="drawer-head">
+      <div>
+        <div class="eyebrow">{{ definition().title }}</div>
+        <h2>{{ currentAction()?.label }}</h2>
+      </div>
+      <button mat-icon-button (click)="closeDrawer()"><mat-icon>close</mat-icon></button>
+    </div>
+    <form class="drawer-body" [formGroup]="form" id="module-form" (ngSubmit)="submit()">
+      @if (error()) {
+        <div class="error-banner">{{ error() }}</div>
+      }
+      <div class="form-intro">
+        <mat-icon>{{ currentAction()?.icon ?? definition().icon }}</mat-icon>
+        <p>Complete the information below. Required fields are marked with an asterisk.</p>
+      </div>
+      <div class="form-grid">
+        @for (field of currentAction()?.fields ?? []; track field.key) {
+          <div
+            class="field"
+            [class.wide]="
+              field.type === 'textarea' || field.type === 'checkbox' || field.type === 'multiselect'
+            "
+          >
+            <label>{{ field.label }}{{ field.required ? ' *' : '' }}</label>
+            @switch (field.type) {
+              @case ('select') {
+                <select [formControlName]="field.key">
+                  <option value="">Select {{ field.label.toLowerCase() }}</option>
+                  @for (item of optionsFor(field); track item.value) {
+                    <option [ngValue]="item.value">{{ item.label }}</option>
+                  }
+                </select>
+              }
+              @case ('multiselect') {
+                <select [formControlName]="field.key" multiple size="5">
+                  @for (item of optionsFor(field); track item.value) {
+                    <option [ngValue]="item.value">{{ item.label }}</option>
+                  }
+                </select>
+              }
+              @case ('textarea') {
+                <textarea
+                  [formControlName]="field.key"
+                  [placeholder]="field.placeholder ?? ''"
+                ></textarea>
+              }
+              @case ('checkbox') {
+                <label class="checkbox-field"
+                  ><input type="checkbox" [formControlName]="field.key" /><span
+                    >Enable this option</span
+                  ></label
+                >
+              }
+              @default {
+                <input
+                  [type]="field.type"
+                  [formControlName]="field.key"
+                  [placeholder]="field.placeholder ?? ''"
+                  [min]="field.min ?? null"
+                />
+              }
+            }
+            @if (field.help) {
+              <small class="field-help">{{ field.help }}</small>
+            }
+            @if (form.get(field.key)?.touched && form.get(field.key)?.invalid) {
+              <small>Please enter a valid {{ field.label.toLowerCase() }}.</small>
+            }
+          </div>
+        }
+      </div>
+    </form>
+    <div class="drawer-actions">
+      <button mat-stroked-button (click)="closeDrawer()">Cancel</button
+      ><button mat-raised-button class="primary-button" form="module-form" [disabled]="saving()">
+        @if (saving()) {
+          <mat-spinner diameter="18"></mat-spinner>
+        } @else {
+          {{ currentAction()?.label }}
+        }
+      </button>
+    </div>
+  </aside>
+}
+
+@if (detailOpen()) {
+  <div class="drawer-overlay" (click)="closeDetails()"></div>
+  <aside class="form-drawer detail-drawer">
+    <div class="drawer-head">
+      <div>
+        <div class="eyebrow">Record details</div>
+        <h2>{{ detailTitle() }}</h2>
+      </div>
+      <button mat-icon-button (click)="closeDetails()"><mat-icon>close</mat-icon></button>
+    </div>
+    <div class="drawer-body">
+      @if (!detailRows().length) {
+        <div class="empty-state">
+          <mat-icon>inbox</mat-icon>
+          <h3>No related records</h3>
+        </div>
+      } @else {
+        <div class="detail-list">
+          @for (row of detailRows(); track row['id'] ?? $index) {
+            <article class="app-card detail-card">
+              @for (column of detailColumns(); track column.key) {
+                <div>
+                  <span>{{ column.label }}</span
+                  ><strong>{{ display(value(row, column.key), column.key) }}</strong>
+                </div>
+              }
+            </article>
+          }
+        </div>
+      }
+    </div>
+  </aside>
+}

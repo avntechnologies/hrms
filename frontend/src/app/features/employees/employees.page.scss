@@ -1,0 +1,221 @@
+.header-actions {
+  display: flex;
+  gap: 9px;
+}
+.header-actions mat-icon {
+  font-size: 17px;
+  margin-right: 5px;
+}
+.employee-metrics {
+  margin-bottom: 16px;
+}
+.employee-table-card select {
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-muted);
+  color: var(--ink);
+  padding: 0 12px;
+  font-size: 10px;
+}
+.result-count {
+  margin-left: auto;
+  color: var(--ink-muted);
+  font-size: 9px;
+}
+.person-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.person-cell > span {
+  width: 31px;
+  height: 31px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: rgb(var(--brand-rgb) / 0.1);
+  color: var(--brand);
+  font-size: 9px;
+  font-weight: 800;
+}
+.person-cell b,
+.person-cell small,
+.cell-primary,
+.cell-secondary {
+  display: block;
+}
+.person-cell b,
+.cell-primary {
+  font-size: 10px;
+}
+.person-cell small,
+.cell-secondary {
+  color: var(--ink-muted);
+  font-size: 8px;
+  margin-top: 3px;
+}
+.data-table code {
+  font: 600 9px Inter;
+  color: var(--brand);
+  background: rgb(var(--brand-rgb) / 0.07);
+  padding: 4px 6px;
+  border-radius: 5px;
+}
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding: 8px 15px;
+  color: var(--ink-muted);
+  font-size: 9px;
+}
+.loading-table {
+  padding: 16px;
+}
+.loading-table .skeleton {
+  height: 44px;
+  margin: 8px 0;
+}
+.drawer-head h2 {
+  font-size: 19px;
+  margin: 0;
+}
+.form-section {
+  padding-bottom: 22px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--border);
+}
+.form-section:last-child {
+  border: 0;
+}
+.form-section h3 {
+  font-size: 11px;
+  margin: 0 0 14px;
+}
+.drawer-actions mat-spinner {
+  margin: auto;
+  --mdc-circular-progress-active-indicator-color: #fff;
+}
+@media (max-width: 720px) {
+  .header-actions {
+    width: 100%;
+  }
+  .header-actions button {
+    flex: 1;
+  }
+  .result-count {
+    display: none;
+  }
+  .table-toolbar select {
+    display: none;
+  }
+}
+.success-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px;
+  margin-bottom: 16px;
+  border: 1px solid #abefc6;
+  border-radius: 11px;
+  background: #ecfdf3;
+  color: #067647;
+  font-size: 12px;
+}
+.success-banner button {
+  margin-left: auto;
+}
+.page-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.table-scroll {
+  overflow: auto;
+}
+.danger-action {
+  color: #b42318 !important;
+}
+.profile-hero {
+  text-align: center;
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.profile-hero > span:first-child {
+  width: 68px;
+  height: 68px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  margin: auto;
+  background: rgb(var(--brand-rgb) / 0.12);
+  color: var(--brand);
+  font-weight: 800;
+  font-size: 20px;
+}
+.profile-hero h3 {
+  margin: 12px 0 4px;
+}
+.profile-hero p {
+  margin: 0 0 12px;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+.profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 18px;
+}
+.profile-grid > div {
+  padding: 13px;
+  background: var(--card-muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.profile-grid span,
+.profile-grid b {
+  display: block;
+}
+.profile-grid span {
+  font-size: 9px;
+  color: var(--ink-muted);
+  margin-bottom: 5px;
+}
+.profile-grid b {
+  font-size: 11px;
+}
+@media (max-width: 600px) {
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.account-intro {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 11px;
+  background: rgb(var(--brand-rgb) / 0.08);
+  margin-bottom: 20px;
+}
+.account-intro mat-icon {
+  color: var(--brand);
+}
+.account-intro p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}
+.field select[multiple] {
+  height: auto;
+  min-height: 140px;
+}
+.field .field-help {
+  color: var(--ink-muted);
+  font-size: 9px;
+  line-height: 1.5;
+}

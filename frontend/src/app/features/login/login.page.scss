@@ -1,0 +1,438 @@
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(520px, 1.08fr) minmax(440px, 0.92fr);
+  background: #fff;
+}
+.login-visual {
+  background: #071426;
+  color: #fff;
+  padding: 34px 44px 28px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.login-visual::before {
+  content: '';
+  position: absolute;
+  width: 540px;
+  height: 540px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(0 103 184 / 0.34), transparent 68%);
+  top: 10%;
+  left: 25%;
+}
+.login-visual::after {
+  content: '';
+  position: absolute;
+  width: 240px;
+  height: 240px;
+  border: 1px solid rgb(255 255 255 / 0.06);
+  border-radius: 50%;
+  right: -70px;
+  top: 24%;
+}
+.visual-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.025;
+  background-image:
+    linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+.brand-lockup,
+.mobile-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  position: relative;
+  z-index: 2;
+}
+.brand-lockup strong {
+  display: block;
+  font-size: 18px;
+}
+.brand-lockup span {
+  display: block;
+  color: #7f91a8;
+  font-size: 8px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.login-mark {
+  width: 35px;
+  height: 35px;
+  border-radius: 10px;
+  padding: 8px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  background: linear-gradient(145deg, #0078d4, #42a5f5);
+}
+.login-mark i {
+  width: 5px;
+  background: #fff;
+  border-radius: 3px;
+}
+.login-mark i:nth-child(1) {
+  height: 10px;
+  opacity: 0.7;
+}
+.login-mark i:nth-child(2) {
+  height: 19px;
+}
+.login-mark i:nth-child(3) {
+  height: 14px;
+  opacity: 0.85;
+}
+.visual-copy {
+  margin: auto 0 22px;
+  max-width: 590px;
+  position: relative;
+  z-index: 2;
+}
+.visual-kicker {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #78b9ef;
+  font-weight: 750;
+}
+.visual-copy h1 {
+  margin: 15px 0;
+  font-size: clamp(38px, 4.1vw, 64px);
+  line-height: 1.03;
+  letter-spacing: -0.055em;
+  font-weight: 650;
+}
+.visual-copy h1 em {
+  color: #62b2f0;
+  font-style: normal;
+}
+.visual-copy p {
+  color: #9aacc1;
+  line-height: 1.65;
+  font-size: 13px;
+  max-width: 500px;
+}
+.insight-panel {
+  position: relative;
+  z-index: 2;
+  max-width: 550px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 13px;
+  background: rgb(255 255 255 / 0.055);
+  backdrop-filter: blur(12px);
+}
+.insight-head {
+  padding: 12px 15px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+}
+.insight-head strong {
+  color: #63e6be;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+.insight-body {
+  padding: 16px;
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+}
+.pulse-stat small,
+.pulse-stat b,
+.pulse-stat span {
+  display: block;
+}
+.pulse-stat small {
+  color: #91a3b9;
+  font-size: 9px;
+}
+.pulse-stat b {
+  font-size: 27px;
+  margin: 3px 0;
+}
+.pulse-stat span {
+  color: #63e6be;
+  font-size: 9px;
+}
+.pulse-chart {
+  height: 60px;
+  flex: 1;
+  display: flex;
+  align-items: end;
+  gap: 5px;
+}
+.pulse-chart i {
+  flex: 1;
+  min-width: 4px;
+  background: linear-gradient(#55aef0, #1476b9);
+  border-radius: 3px 3px 0 0;
+  opacity: 0.8;
+}
+.insight-foot {
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+  padding: 9px 15px;
+  display: flex;
+  justify-content: space-between;
+  color: #75889e;
+  font-size: 8px;
+}
+.insight-foot i {
+  width: 6px;
+  height: 6px;
+  display: inline-block;
+  border-radius: 50%;
+  background: #42d49b;
+  margin-right: 5px;
+}
+.visual-footer {
+  margin-top: 28px;
+  display: flex;
+  gap: 26px;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+  color: #61758c;
+  font-size: 10px;
+}
+.visual-footer > span {
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 7px;
+}
+.visual-footer div {
+  color: #8193a8;
+  font-weight: 700;
+}
+.login-form-side {
+  padding: 34px 6vw 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: #172033;
+}
+.login-card {
+  width: min(410px, 100%);
+  margin: auto;
+}
+.mobile-brand {
+  display: none;
+}
+.welcome-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #0067b8;
+  font-size: 9px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.welcome-badge mat-icon {
+  font-size: 15px;
+  width: 15px;
+  height: 15px;
+}
+.login-card h2 {
+  font-size: 29px;
+  margin: 12px 0 4px;
+  letter-spacing: -0.04em;
+}
+.login-card > p {
+  color: #7a8598;
+  margin: 0 0 26px;
+  font-size: 11px;
+}
+.login-card form > label {
+  display: block;
+  font-size: 9px;
+  font-weight: 750;
+  color: #4a5568;
+  margin: 15px 0 7px;
+}
+.login-field {
+  height: 44px;
+  border: 1px solid #dfe4eb;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  padding: 0 11px;
+  transition: 0.15s;
+}
+.login-field:focus-within {
+  border-color: #0067b8;
+  box-shadow: 0 0 0 3px rgb(0 103 184 / 0.09);
+}
+.login-field > mat-icon {
+  color: #8d99aa;
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  margin-right: 9px;
+}
+.login-field input {
+  border: 0;
+  outline: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+}
+.login-field span {
+  color: #a0a9b7;
+  font-size: 9px;
+}
+.login-field button {
+  border: 0;
+  background: none;
+  color: #8d99aa;
+  padding: 5px;
+  cursor: pointer;
+}
+.login-field button mat-icon {
+  font-size: 17px;
+  width: 17px;
+  height: 17px;
+}
+.field-error {
+  color: #b42318;
+  font-size: 8px;
+}
+.login-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 14px 0 18px;
+  font-size: 9px;
+}
+.remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #647086;
+}
+.login-options a,
+.help-copy a {
+  color: #0067b8;
+  font-weight: 650;
+}
+.login-submit {
+  width: 100%;
+  height: 44px;
+  background: #0067b8 !important;
+  color: #fff !important;
+  border-radius: 9px !important;
+}
+.login-submit .mat-icon {
+  font-size: 17px;
+  margin-left: 6px;
+}
+.login-submit mat-spinner {
+  margin: auto;
+  --mdc-circular-progress-active-indicator-color: #fff;
+}
+.login-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fef3f2;
+  color: #b42318;
+  border: 1px solid #fecdca;
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 9px;
+}
+.login-error mat-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+.sso-divider {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9aa4b2;
+  font-size: 8px;
+}
+.sso-divider::before,
+.sso-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e9ef;
+}
+.sso-divider span {
+  padding: 0 10px;
+}
+.sso-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.sso-grid button {
+  height: 40px;
+  border: 1px solid #dfe4eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #344054;
+  font-size: 9px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.sso-grid b {
+  margin-right: 7px;
+  font-size: 15px;
+}
+.microsoft-logo {
+  color: #0078d4;
+}
+.google-logo {
+  color: #4285f4;
+}
+.help-copy {
+  text-align: center;
+  font-size: 8px !important;
+  margin-top: 23px !important;
+}
+.login-footer {
+  width: min(410px, 100%);
+  margin: 20px auto 0;
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  color: #98a2b3;
+  font-size: 7px;
+}
+.login-footer span:last-child {
+  margin-left: auto;
+}
+@media (max-width: 900px) {
+  .login-page {
+    grid-template-columns: 1fr;
+  }
+  .login-visual {
+    display: none;
+  }
+  .login-form-side {
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .mobile-brand {
+    display: flex;
+    position: absolute;
+    top: 24px;
+    left: 24px;
+  }
+  .mobile-brand strong {
+    font-size: 17px;
+  }
+  .login-card {
+    margin: 100px auto 30px;
+  }
+}

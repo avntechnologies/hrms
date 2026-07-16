@@ -1,0 +1,172 @@
+<div class="page-shell theme-page">
+  <div class="page-header">
+    <div>
+      <div class="eyebrow">Tenant settings · Brand experience</div>
+      <h1 class="page-title">Theme Studio</h1>
+      <p class="page-description">
+        Give every tenant a recognizable workspace. Theme preferences are stored independently for
+        each tenant and applied across Material components and application surfaces.
+      </p>
+    </div>
+    <div class="save-state" [class.visible]="saved()">
+      <mat-icon>check_circle</mat-icon>Theme saved
+    </div>
+  </div>
+  <section class="theme-layout">
+    <div class="theme-controls">
+      <article class="app-card settings-card">
+        <div class="settings-head">
+          <div>
+            <h2>Curated themes</h2>
+            <p>Start from an enterprise-ready palette.</p>
+          </div>
+          <span class="azure-badge">Azure Material base</span>
+        </div>
+        <div class="preset-grid">
+          @for (theme of themes.presets; track theme.id) {
+            <button
+              class="preset-card"
+              [class.selected]="themes.current().id === theme.id"
+              (click)="select(theme)"
+            >
+              <div class="preset-preview" [style.background]="theme.surface">
+                <span [style.background]="theme.sidebar"></span
+                ><i [style.background]="theme.primary"></i><b [style.background]="theme.accent"></b>
+              </div>
+              <div>
+                <strong>{{ theme.name }}</strong
+                ><small>{{ theme.description }}</small>
+              </div>
+              @if (themes.current().id === theme.id) {
+                <mat-icon>check_circle</mat-icon>
+              }
+            </button>
+          }
+        </div>
+      </article>
+      <article class="app-card settings-card">
+        <div class="settings-head">
+          <div>
+            <h2>Tenant identity</h2>
+            <p>Personalize the workspace for this company.</p>
+          </div>
+        </div>
+        <div class="setting-grid">
+          <div class="field">
+            <label>Tenant display name</label
+            ><input [ngModel]="tenantName()" (ngModelChange)="tenantName.set($event)" />
+          </div>
+          <div class="field">
+            <label>Logo initials</label
+            ><input maxlength="3" [ngModel]="logoText()" (ngModelChange)="logoText.set($event)" />
+          </div>
+          <div class="field">
+            <label>Primary color</label>
+            <div class="color-control">
+              <input
+                type="color"
+                [ngModel]="customPrimary()"
+                (ngModelChange)="customPrimary.set($event)"
+              /><input [ngModel]="customPrimary()" (ngModelChange)="customPrimary.set($event)" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Accent color</label>
+            <div class="color-control">
+              <input
+                type="color"
+                [ngModel]="customAccent()"
+                (ngModelChange)="customAccent.set($event)"
+              /><input [ngModel]="customAccent()" (ngModelChange)="customAccent.set($event)" />
+            </div>
+          </div>
+        </div>
+        <div class="preference-row">
+          <div><b>Dark workspace</b><span>Use low-glare surfaces throughout the tenant.</span></div>
+          <mat-slide-toggle
+            [checked]="dark()"
+            (change)="dark.set($event.checked)"
+          ></mat-slide-toggle>
+        </div>
+        <div class="preference-row">
+          <div><b>Compact density</b><span>Show more information in tables and forms.</span></div>
+          <mat-slide-toggle
+            [checked]="compact()"
+            (change)="compact.set($event.checked)"
+          ></mat-slide-toggle>
+        </div>
+        <div class="radius-row">
+          <div>
+            <b>Corner style</b><span>{{ customRadius() }}px</span>
+          </div>
+          <input
+            type="range"
+            min="4"
+            max="24"
+            [ngModel]="customRadius()"
+            (ngModelChange)="customRadius.set(+$event)"
+          />
+        </div>
+        <div class="setting-actions">
+          <button mat-stroked-button (click)="select(themes.presets[0])">Reset to Azure</button
+          ><button mat-raised-button class="primary-button" (click)="applyCustom()">
+            <mat-icon>palette</mat-icon>Apply tenant theme
+          </button>
+        </div>
+      </article>
+    </div>
+    <aside class="app-card live-preview">
+      <div class="preview-label">
+        <span>Live preview</span><b>{{ currentName() }}</b>
+      </div>
+      <div class="mini-app">
+        <div class="mini-sidebar">
+          <div class="mini-logo">{{ logoText() }}</div>
+          @for (item of [1, 2, 3, 4, 5, 6]; track item) {
+            <i [class.active]="item === 1"></i>
+          }
+        </div>
+        <div class="mini-main">
+          <div class="mini-toolbar">
+            <b>{{ tenantName() }}</b
+            ><span></span><i></i>
+          </div>
+          <div class="mini-content">
+            <small>WORKFORCE OVERVIEW</small>
+            <h3>Good morning, {{ auth.user()?.displayName?.split(' ')?.[0] }}</h3>
+            <p>Your organization at a glance</p>
+            <div class="mini-metrics">
+              @for (value of ['1,248', '3', '14']; track value) {
+                <div>
+                  <span></span><b>{{ value }}</b
+                  ><i></i>
+                </div>
+              }
+            </div>
+            <div class="mini-chart">
+              <div></div>
+              <div></div>
+              <div></div>
+              <div></div>
+              <div></div>
+              <div></div>
+              <div></div>
+            </div>
+            <div class="mini-table">
+              @for (row of [1, 2, 3, 4]; track row) {
+                <div><i></i><span></span><span></span><b></b></div>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="theme-note">
+        <mat-icon>info</mat-icon>
+        <p>
+          Theme settings are scoped to tenant <strong>{{ auth.tenantId() }}</strong
+          >. Other companies can choose their own theme without affecting this workspace.
+        </p>
+      </div>
+    </aside>
+  </section>
+</div>
