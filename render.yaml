@@ -29,6 +29,8 @@ services:
         sync: false
       - key: Database__AutoMigrate
         value: "true"
+      - key: Swagger__Enabled
+        value: "true"
 
   - type: web
     name: hrms

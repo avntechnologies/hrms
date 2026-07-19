@@ -91,6 +91,7 @@ The Docker image building successfully only proves that the application compiled
 | `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | `true`                                                                |
 | `PORT`                                | `10000`                                                               |
 | `Database__AutoMigrate`               | `true`                                                                |
+| `Swagger__Enabled`                    | `true`                                                                |
 
 Do not store any of those secret values in Git. The application deliberately fails fast when its database connection or JWT signing key is absent.
 
@@ -109,3 +110,5 @@ Under **Redirects/Rewrites**, add the API rewrite first and the Angular fallback
 | `/*`     | `/index.html`                                  | Rewrite |
 
 After pushing these repository changes, deploy the latest commit instead of retrying commit `dd6719a7ef441791fa00b64dc47286005be653b3`.
+
+The production Swagger UI is available at `https://hrms-backend-7wpm.onrender.com/swagger` when `Swagger__Enabled=true`. Disable that variable if API documentation should no longer be public.

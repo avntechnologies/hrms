@@ -57,7 +57,8 @@ app.UseAuthentication();
 app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseRateLimiter();
 app.UseAuthorization();
-if (app.Environment.IsDevelopment())
+var swaggerEnabled = app.Environment.IsDevelopment() || app.Configuration.GetValue("Swagger:Enabled", false);
+if (swaggerEnabled)
 {
     app.MapOpenApi();
     app.UseSwagger();
