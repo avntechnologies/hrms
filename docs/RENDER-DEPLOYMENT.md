@@ -2,8 +2,8 @@
 
 The repository includes a Render Blueprint at `render.yaml`. It creates:
 
-- `peopleflow-hrms-api`: the .NET 10 Docker web service in Singapore.
-- `peopleflow-hrms-web`: the Angular static site served through Render's CDN.
+- `hrms-backend`: the .NET 10 Docker web service in Singapore.
+- `hrms`: the Angular static site served through Render's CDN.
 
 The Angular application calls `/api/v1` on its own origin. Render proxies `/api/*` to the API service, so tenant tokens and API URLs do not need to be compiled into the frontend.
 
@@ -32,14 +32,14 @@ The Angular application calls `/api/v1` on its own origin. Render proxies `/api/
 
 The default URLs are:
 
-- Web: `https://peopleflow-hrms-web.onrender.com`
-- API health: `https://peopleflow-hrms-api.onrender.com/health`
+- Web: the URL Render assigns to the `hrms` static site.
+- API health: `https://hrms-backend-7wpm.onrender.com/health`
 
 The database migration runs automatically when the API starts. Existing Neon data is retained. The bootstrap credentials create the platform administrator only when the platform tenant does not already exist; they do not reset an existing platform password.
 
 ## Service names and custom domains
 
-The frontend API rewrite uses the default API hostname derived from `peopleflow-hrms-api`. If you rename that Render service, update the `/api/*` destination in `render.yaml` before deploying.
+The frontend API rewrite points to the current `hrms-backend` Render URL. If Render assigns a different hostname or the service is renamed, update the `/api/*` destination in `render.yaml` and the static site's rewrite rule.
 
 When adding a custom frontend domain, the same-origin `/api/*` proxy continues to work. If another browser application calls the API directly, add its exact HTTPS origin as another `Cors__AllowedOrigins__N` variable on the API service. Never use `*` together with credentialed CORS.
 
@@ -64,7 +64,7 @@ If not using the Blueprint, use these settings:
 - Region: Singapore
 - Health check: `/health`
 - Port: `10000`
-- Add the environment variables declared for `peopleflow-hrms-api` in `render.yaml`.
+- Add the environment variables declared for `hrms-backend` in `render.yaml`.
 
 ### Frontend
 
@@ -72,5 +72,40 @@ If not using the Blueprint, use these settings:
 - Root directory: `frontend`
 - Build command: `npm ci && npm run build`
 - Publish directory: `dist/frontend/browser`
-- Rewrite `/api/*` to `https://peopleflow-hrms-api.onrender.com/api/*`.
+- Environment variable: `NODE_VERSION=24.15.0`
+- Rewrite `/api/*` to `https://hrms-backend-7wpm.onrender.com/api/*`.
 - Rewrite `/*` to `/index.html` after the API rule.
+
+## Repair the existing manually created services
+
+The Docker image building successfully only proves that the application compiled. The API cannot start until its runtime secrets exist. In **hrms-backend > Environment**, add these variables, then select **Save, rebuild, and deploy**:
+
+| Key                                   | Value                                                                 |
+| ------------------------------------- | --------------------------------------------------------------------- |
+| `ConnectionStrings__Hrms`             | The rotated Neon PostgreSQL connection URL                            |
+| `Jwt__SigningKey`                     | A generated random secret of at least 32 bytes (64+ characters ideal) |
+| `Bootstrap__PlatformAdminEmail`       | The platform administrator email                                      |
+| `Bootstrap__PlatformAdminPassword`    | A unique password of at least 12 characters                           |
+| `ASPNETCORE_ENVIRONMENT`              | `Production`                                                          |
+| `ASPNETCORE_HTTP_PORTS`               | `10000`                                                               |
+| `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | `true`                                                                |
+| `PORT`                                | `10000`                                                               |
+| `Database__AutoMigrate`               | `true`                                                                |
+
+Do not store any of those secret values in Git. The application deliberately fails fast when its database connection or JWT signing key is absent.
+
+In **hrms > Settings**, use:
+
+- Root directory: `frontend`
+- Build command: `npm ci && npm run build`
+- Publish directory: `dist/frontend/browser`
+- Environment variable: `NODE_VERSION=24.15.0`
+
+Under **Redirects/Rewrites**, add the API rewrite first and the Angular fallback second:
+
+| Source   | Destination                                    | Action  |
+| -------- | ---------------------------------------------- | ------- |
+| `/api/*` | `https://hrms-backend-7wpm.onrender.com/api/*` | Rewrite |
+| `/*`     | `/index.html`                                  | Rewrite |
+
+After pushing these repository changes, deploy the latest commit instead of retrying commit `dd6719a7ef441791fa00b64dc47286005be653b3`.

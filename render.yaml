@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://json.schemastore.org/render.json
 services:
   - type: web
-    name: peopleflow-hrms-api
+    name: hrms-backend
     runtime: docker
     rootDir: backend
     dockerfilePath: ./Dockerfile
@@ -29,16 +29,17 @@ services:
         sync: false
       - key: Database__AutoMigrate
         value: "true"
-      - key: Cors__AllowedOrigins__0
-        value: https://peopleflow-hrms-web.onrender.com
 
   - type: web
-    name: peopleflow-hrms-web
+    name: hrms
     runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: ./dist/frontend/browser
     autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "24.15.0"
     headers:
       - path: /*
         name: X-Content-Type-Options
@@ -65,7 +66,7 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://peopleflow-hrms-api.onrender.com/api/*
+        destination: https://hrms-backend-7wpm.onrender.com/api/*
       - type: rewrite
         source: /*
         destination: /index.html
