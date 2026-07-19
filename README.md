@@ -61,4 +61,10 @@ npm run build
 npm run test
 ```
 
+## Deploy to Render
+
+The root [render.yaml](render.yaml) deploys the .NET API as a Docker web service and the Angular application as a Render static site. It keeps the existing Neon connection string and all credentials in Render environment variables, proxies `/api/*` through the frontend origin, configures Angular route fallback, and uses `/health` for deployment checks.
+
+Follow [docs/RENDER-DEPLOYMENT.md](docs/RENDER-DEPLOYMENT.md) for the Blueprint steps, required secrets, service URLs, custom-domain guidance, and production scaling notes.
+
 See [backend/README.md](backend/README.md) for API architecture, migrations, Docker, and production guidance.

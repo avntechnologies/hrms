@@ -16,8 +16,9 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("Hrms")
-            ?? throw new InvalidOperationException("ConnectionStrings:Hrms is required.");
+        var configuredConnection = configuration.GetConnectionString("Hrms");
+        if (string.IsNullOrWhiteSpace(configuredConnection)) throw new InvalidOperationException("ConnectionStrings:Hrms is required.");
+        var connectionString = PostgresConnectionString.Normalize(configuredConnection);
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentTenant, CurrentTenant>();
         services.AddScoped<ICurrentUser, CurrentUser>();

@@ -1,6 +1,8 @@
 using Hrms.Infrastructure.Identity;
+using Hrms.Infrastructure;
 using Hrms.Application;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using System.IdentityModel.Tokens.Jwt;
 
 namespace Hrms.Tests;
@@ -39,5 +41,20 @@ public sealed class SecurityTests
         var employee = Permissions.TenantSystemRoles.Single(x => x.NormalizedName == "EMPLOYEE_SELF_SERVICE");
         Assert.Equal([Permissions.SelfService], employee.Permissions);
         Assert.DoesNotContain(Permissions.All, employee.Permissions);
+    }
+
+    [Fact]
+    public void PostgreSql_url_is_normalized_for_npgsql_and_preserves_tls_settings()
+    {
+        var normalized = PostgresConnectionString.Normalize("postgresql://hrms_user:p%40ssword@db.example.test:5433/hrms_prod?sslmode=require&channel_binding=require");
+        var connection = new NpgsqlConnectionStringBuilder(normalized);
+
+        Assert.Equal("db.example.test", connection.Host);
+        Assert.Equal(5433, connection.Port);
+        Assert.Equal("hrms_user", connection.Username);
+        Assert.Equal("p@ssword", connection.Password);
+        Assert.Equal("hrms_prod", connection.Database);
+        Assert.Equal(SslMode.Require, connection.SslMode);
+        Assert.Equal("Require", connection["Channel Binding"]?.ToString());
     }
 }

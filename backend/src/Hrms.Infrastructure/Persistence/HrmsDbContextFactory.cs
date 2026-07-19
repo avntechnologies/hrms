@@ -10,7 +10,8 @@ public sealed class HrmsDbContextFactory : IDesignTimeDbContextFactory<HrmsDbCon
 {
     public HrmsDbContext CreateDbContext(string[] args)
     {
-        var connection = Environment.GetEnvironmentVariable("ConnectionStrings__Hrms") ?? "Host=localhost;Port=5432;Database=hrms;Username=postgres;Password=postgres";
+        var configuredConnection = Environment.GetEnvironmentVariable("ConnectionStrings__Hrms") ?? "Host=localhost;Port=5432;Database=hrms;Username=postgres;Password=postgres";
+        var connection = PostgresConnectionString.Normalize(configuredConnection);
         var options = new DbContextOptionsBuilder<HrmsDbContext>().UseNpgsql(connection).Options;
         return new HrmsDbContext(options, new CurrentTenant(), new CurrentUser(new HttpContextAccessor()));
     }
