@@ -40,9 +40,9 @@ export class SelfDashboardPage implements OnInit {
   readonly passwordOpen = signal(false);
   readonly passwordSaving = signal(false);
   readonly passwordForm = this.fb.nonNullable.group({
-    currentPassword: ['', [Validators.required, Validators.minLength(12)]],
-    newPassword: ['', [Validators.required, Validators.minLength(12)]],
-    confirmPassword: ['', [Validators.required, Validators.minLength(12)]],
+    currentPassword: ['', [Validators.required, Validators.minLength(8)]],
+    newPassword: ['', [Validators.required, Validators.minLength(8)]],
+    confirmPassword: ['', [Validators.required, Validators.minLength(8)]],
   });
 
   ngOnInit(): void {

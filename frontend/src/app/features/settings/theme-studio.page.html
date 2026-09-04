@@ -1,172 +1,129 @@
 <div class="page-shell theme-page">
   <div class="page-header">
     <div>
-      <div class="eyebrow">Tenant settings · Brand experience</div>
-      <h1 class="page-title">Theme Studio</h1>
+      <div class="eyebrow">Settings</div>
+      <h1 class="page-title">Appearance</h1>
       <p class="page-description">
-        Give every tenant a recognizable workspace. Theme preferences are stored independently for
-        each tenant and applied across Material components and application surfaces.
+        Choose how PeopleFlow looks on this browser. Your preference is saved for this workspace.
       </p>
     </div>
-    <div class="save-state" [class.visible]="saved()">
-      <mat-icon>check_circle</mat-icon>Theme saved
+    <div class="save-state" [class.visible]="saved()" role="status">
+      <mat-icon>check_circle</mat-icon>Saved
     </div>
   </div>
+
   <section class="theme-layout">
-    <div class="theme-controls">
-      <article class="app-card settings-card">
-        <div class="settings-head">
-          <div>
-            <h2>Curated themes</h2>
-            <p>Start from an enterprise-ready palette.</p>
-          </div>
-          <span class="azure-badge">Azure Material base</span>
+    <article class="app-card settings-card">
+      <div class="settings-head">
+        <div>
+          <h2>Color theme</h2>
+          <p>Select a ready-to-use application palette.</p>
         </div>
-        <div class="preset-grid">
-          @for (theme of themes.presets; track theme.id) {
-            <button
-              class="preset-card"
-              [class.selected]="themes.current().id === theme.id"
-              (click)="select(theme)"
-            >
-              <div class="preset-preview" [style.background]="theme.surface">
-                <span [style.background]="theme.sidebar"></span
-                ><i [style.background]="theme.primary"></i><b [style.background]="theme.accent"></b>
-              </div>
-              <div>
-                <strong>{{ theme.name }}</strong
-                ><small>{{ theme.description }}</small>
-              </div>
-              @if (themes.current().id === theme.id) {
-                <mat-icon>check_circle</mat-icon>
-              }
-            </button>
-          }
-        </div>
-      </article>
-      <article class="app-card settings-card">
-        <div class="settings-head">
-          <div>
-            <h2>Tenant identity</h2>
-            <p>Personalize the workspace for this company.</p>
-          </div>
-        </div>
-        <div class="setting-grid">
-          <div class="field">
-            <label>Tenant display name</label
-            ><input [ngModel]="tenantName()" (ngModelChange)="tenantName.set($event)" />
-          </div>
-          <div class="field">
-            <label>Logo initials</label
-            ><input maxlength="3" [ngModel]="logoText()" (ngModelChange)="logoText.set($event)" />
-          </div>
-          <div class="field">
-            <label>Primary color</label>
-            <div class="color-control">
-              <input
-                type="color"
-                [ngModel]="customPrimary()"
-                (ngModelChange)="customPrimary.set($event)"
-              /><input [ngModel]="customPrimary()" (ngModelChange)="customPrimary.set($event)" />
-            </div>
-          </div>
-          <div class="field">
-            <label>Accent color</label>
-            <div class="color-control">
-              <input
-                type="color"
-                [ngModel]="customAccent()"
-                (ngModelChange)="customAccent.set($event)"
-              /><input [ngModel]="customAccent()" (ngModelChange)="customAccent.set($event)" />
-            </div>
-          </div>
-        </div>
-        <div class="preference-row">
-          <div><b>Dark workspace</b><span>Use low-glare surfaces throughout the tenant.</span></div>
-          <mat-slide-toggle
-            [checked]="dark()"
-            (change)="dark.set($event.checked)"
-          ></mat-slide-toggle>
-        </div>
-        <div class="preference-row">
-          <div><b>Compact density</b><span>Show more information in tables and forms.</span></div>
-          <mat-slide-toggle
-            [checked]="compact()"
-            (change)="compact.set($event.checked)"
-          ></mat-slide-toggle>
-        </div>
-        <div class="radius-row">
-          <div>
-            <b>Corner style</b><span>{{ customRadius() }}px</span>
-          </div>
-          <input
-            type="range"
-            min="4"
-            max="24"
-            [ngModel]="customRadius()"
-            (ngModelChange)="customRadius.set(+$event)"
-          />
-        </div>
-        <div class="setting-actions">
-          <button mat-stroked-button (click)="select(themes.presets[0])">Reset to Azure</button
-          ><button mat-raised-button class="primary-button" (click)="applyCustom()">
-            <mat-icon>palette</mat-icon>Apply tenant theme
+      </div>
+      <div class="preset-grid">
+        @for (theme of themes.presets; track theme.id) {
+          <button
+            class="preset-card"
+            [class.selected]="themes.current().id === theme.id"
+            (click)="select(theme)"
+            [attr.aria-pressed]="themes.current().id === theme.id"
+          >
+            <span class="preset-swatches" aria-hidden="true">
+              <i [style.background]="theme.sidebar"></i>
+              <i [style.background]="theme.primary"></i>
+              <i [style.background]="theme.surface"></i>
+            </span>
+            <span class="preset-copy">
+              <strong>{{ theme.name }}</strong>
+              <small>{{ theme.description }}</small>
+            </span>
+            @if (themes.current().id === theme.id) {
+              <mat-icon>check_circle</mat-icon>
+            }
           </button>
-        </div>
-      </article>
-    </div>
-    <aside class="app-card live-preview">
-      <div class="preview-label">
-        <span>Live preview</span><b>{{ currentName() }}</b>
+        }
       </div>
-      <div class="mini-app">
-        <div class="mini-sidebar">
-          <div class="mini-logo">{{ logoText() }}</div>
-          @for (item of [1, 2, 3, 4, 5, 6]; track item) {
-            <i [class.active]="item === 1"></i>
-          }
+    </article>
+
+    <article class="app-card settings-card">
+      <div class="settings-head">
+        <div>
+          <h2>Custom preferences</h2>
+          <p>Adjust color, contrast, density, and corner style.</p>
         </div>
-        <div class="mini-main">
-          <div class="mini-toolbar">
-            <b>{{ tenantName() }}</b
-            ><span></span><i></i>
+      </div>
+
+      <div class="setting-grid">
+        <div class="field">
+          <label for="primaryColor">Primary color</label>
+          <div class="color-control">
+            <input
+              id="primaryColor"
+              type="color"
+              [ngModel]="customPrimary()"
+              (ngModelChange)="customPrimary.set($event)"
+            />
+            <input
+              aria-label="Primary color value"
+              [ngModel]="customPrimary()"
+              (ngModelChange)="customPrimary.set($event)"
+            />
           </div>
-          <div class="mini-content">
-            <small>WORKFORCE OVERVIEW</small>
-            <h3>Good morning, {{ auth.user()?.displayName?.split(' ')?.[0] }}</h3>
-            <p>Your organization at a glance</p>
-            <div class="mini-metrics">
-              @for (value of ['1,248', '3', '14']; track value) {
-                <div>
-                  <span></span><b>{{ value }}</b
-                  ><i></i>
-                </div>
-              }
-            </div>
-            <div class="mini-chart">
-              <div></div>
-              <div></div>
-              <div></div>
-              <div></div>
-              <div></div>
-              <div></div>
-              <div></div>
-            </div>
-            <div class="mini-table">
-              @for (row of [1, 2, 3, 4]; track row) {
-                <div><i></i><span></span><span></span><b></b></div>
-              }
-            </div>
+        </div>
+        <div class="field">
+          <label for="accentColor">Accent color</label>
+          <div class="color-control">
+            <input
+              id="accentColor"
+              type="color"
+              [ngModel]="customAccent()"
+              (ngModelChange)="customAccent.set($event)"
+            />
+            <input
+              aria-label="Accent color value"
+              [ngModel]="customAccent()"
+              (ngModelChange)="customAccent.set($event)"
+            />
           </div>
         </div>
       </div>
-      <div class="theme-note">
-        <mat-icon>info</mat-icon>
-        <p>
-          Theme settings are scoped to tenant <strong>{{ auth.tenantId() }}</strong
-          >. Other companies can choose their own theme without affecting this workspace.
-        </p>
+
+      <div class="preference-row">
+        <div><b>Dark mode</b><span>Use darker surfaces and higher-contrast text.</span></div>
+        <mat-slide-toggle
+          aria-label="Dark mode"
+          [checked]="dark()"
+          (change)="dark.set($event.checked)"
+        ></mat-slide-toggle>
       </div>
-    </aside>
+      <div class="preference-row">
+        <div><b>Compact density</b><span>Reduce row height in data-heavy tables.</span></div>
+        <mat-slide-toggle
+          aria-label="Compact density"
+          [checked]="compact()"
+          (change)="compact.set($event.checked)"
+        ></mat-slide-toggle>
+      </div>
+      <div class="radius-row">
+        <div>
+          <b>Corner radius</b><span>{{ customRadius() }}px</span>
+        </div>
+        <input
+          aria-label="Corner radius"
+          type="range"
+          min="4"
+          max="8"
+          [ngModel]="customRadius()"
+          (ngModelChange)="customRadius.set(+$event)"
+        />
+      </div>
+
+      <div class="setting-actions">
+        <button mat-stroked-button (click)="select(themes.presets[0])">Reset</button>
+        <button mat-raised-button class="primary-button" (click)="applyCustom()">
+          <mat-icon>check</mat-icon>Apply preferences
+        </button>
+      </div>
+    </article>
   </section>
 </div>

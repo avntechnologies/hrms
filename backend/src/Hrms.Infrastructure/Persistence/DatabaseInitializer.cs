@@ -18,8 +18,8 @@ public sealed class DatabaseInitializer(HrmsDbContext db, ICurrentTenant current
         if (!await db.Tenants.IgnoreQueryFilters().AnyAsync(x => x.Id == PlatformTenantId, ct))
         {
             var password = configuration["Bootstrap:PlatformAdminPassword"];
-            if (string.IsNullOrWhiteSpace(password) || password.Length < 12 || (!environment.IsDevelopment() && password.StartsWith("CHANGE", StringComparison.OrdinalIgnoreCase)))
-                throw new InvalidOperationException("Set Bootstrap:PlatformAdminPassword to a secure value of at least 12 characters before first startup.");
+            if (string.IsNullOrWhiteSpace(password) || password.Length < 8 || (!environment.IsDevelopment() && password.StartsWith("CHANGE", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("Set Bootstrap:PlatformAdminPassword to a secure value of at least 8 characters before first startup.");
             var email = configuration["Bootstrap:PlatformAdminEmail"] ?? "platform-admin@local.invalid";
             db.Tenants.Add(new Tenant { Id = PlatformTenantId, Name = "HRMS Platform", Slug = "platform", Status = TenantStatus.Active, DefaultCurrency = "USD", TimeZone = "UTC" });
             currentTenant.Set(PlatformTenantId, "platform");

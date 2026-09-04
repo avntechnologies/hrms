@@ -379,7 +379,7 @@ export class ModulePage implements OnInit, OnDestroy {
       const validators = field.required ? [Validators.required] : [];
       if (field.min !== undefined) validators.push(Validators.min(field.min));
       if (field.type === 'email') validators.push(Validators.email);
-      if (field.type === 'password') validators.push(Validators.minLength(12));
+      if (field.type === 'password') validators.push(Validators.minLength(8));
       controls[field.key] = [initial, validators];
     }
     this.form = this.fb.group(controls);

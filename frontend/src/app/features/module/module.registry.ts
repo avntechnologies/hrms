@@ -618,7 +618,7 @@ export const MODULES: Record<string, ModuleDefinition> = {
             label: 'Temporary password',
             type: 'password',
             required: true,
-            help: 'Use at least 12 characters.',
+            help: 'Use at least 8 characters.',
           },
           {
             key: 'defaultCurrency',

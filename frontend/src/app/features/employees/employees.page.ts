@@ -84,7 +84,7 @@ export class EmployeesPage implements OnInit {
     version: [0],
   });
   readonly accountForm = this.fb.nonNullable.group({
-    password: ['', [Validators.required, Validators.minLength(12)]],
+    password: ['', [Validators.required, Validators.minLength(8)]],
     roleIds: [[] as string[], Validators.required],
   });
 

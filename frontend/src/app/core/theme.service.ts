@@ -27,7 +27,7 @@ export const THEME_PRESETS: TenantTheme[] = [
     accent: '#2b88d8',
     surface: '#f5f7fb',
     sidebar: '#071426',
-    radius: 14,
+    radius: 8,
     density: 'comfortable',
   },
   {
@@ -40,39 +40,26 @@ export const THEME_PRESETS: TenantTheme[] = [
     accent: '#38bdf8',
     surface: '#08111f',
     sidebar: '#030712',
-    radius: 14,
+    radius: 8,
     density: 'comfortable',
   },
   {
     id: 'emerald',
-    name: 'Emerald',
-    description: 'People-first and optimistic',
+    name: 'Evergreen',
+    description: 'Calm green workspace',
     scheme: 'light',
     primary: '#047857',
     primaryRgb: '4 120 87',
     accent: '#10b981',
     surface: '#f4f8f6',
     sidebar: '#06251d',
-    radius: 18,
-    density: 'comfortable',
-  },
-  {
-    id: 'violet',
-    name: 'Violet',
-    description: 'Confident talent experience',
-    scheme: 'light',
-    primary: '#6d28d9',
-    primaryRgb: '109 40 217',
-    accent: '#8b5cf6',
-    surface: '#f8f6fc',
-    sidebar: '#1c1038',
-    radius: 18,
+    radius: 8,
     density: 'comfortable',
   },
   {
     id: 'graphite',
     name: 'Graphite',
-    description: 'Dense executive workspace',
+    description: 'Dense neutral workspace',
     scheme: 'light',
     primary: '#334155',
     primaryRgb: '51 65 85',
@@ -100,7 +87,8 @@ export class ThemeService {
       let theme = THEME_PRESETS[0];
       if (saved) {
         try {
-          theme = JSON.parse(saved) as TenantTheme;
+          const stored = JSON.parse(saved) as TenantTheme;
+          theme = { ...stored, radius: Math.min(8, Math.max(4, stored.radius ?? 8)) };
         } catch {
           localStorage.removeItem(`peopleflow.theme.${tenantId}`);
         }
@@ -111,6 +99,7 @@ export class ThemeService {
   }
 
   select(theme: TenantTheme): void {
+    theme = { ...theme, radius: Math.min(8, Math.max(4, theme.radius)) };
     const tenantId = this.auth.tenantId();
     localStorage.setItem(`peopleflow.theme.${tenantId}`, JSON.stringify(theme));
     this.selected.set(theme);

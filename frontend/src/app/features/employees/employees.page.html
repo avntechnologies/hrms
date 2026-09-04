@@ -21,36 +21,6 @@
       }}<button mat-icon-button (click)="success.set('')"><mat-icon>close</mat-icon></button>
     </div>
   }
-  @if (error() && !drawerOpen()) {
-    <div class="error-banner page-error">
-      {{ error() }} <button mat-button (click)="load(data().page)">Retry</button>
-    </div>
-  }
-  <section class="metric-grid employee-metrics">
-    @for (
-      metric of [
-        { label: 'Total workforce', value: data().total, trend: 'All matching employees' },
-        { label: 'Visible records', value: data().items.length, trend: 'Current page' },
-        {
-          label: 'Active',
-          value: data().items.filter((e) => e.status === 'Active').length,
-          trend: 'Current page',
-        },
-        {
-          label: 'On probation',
-          value: data().items.filter((e) => e.status === 'Probation').length,
-          trend: 'Current page',
-        },
-      ];
-      track metric.label
-    ) {
-      <article class="app-card metric-card">
-        <div class="metric-label">{{ metric.label }}</div>
-        <div class="metric-value">{{ metric.value }}</div>
-        <div class="metric-trend">{{ metric.trend }}</div>
-      </article>
-    }
-  </section>
   <section class="app-card table-card employee-table-card">
     <div class="table-toolbar">
       <div class="search-field">
@@ -78,6 +48,13 @@
         @for (row of [1, 2, 3, 4, 5]; track row) {
           <div class="skeleton"></div>
         }
+      </div>
+    } @else if (error() && !drawerOpen()) {
+      <div class="empty-state" role="alert">
+        <mat-icon>cloud_off</mat-icon>
+        <h3>Employees unavailable</h3>
+        <p>{{ error() }}</p>
+        <button mat-stroked-button (click)="load(data().page)">Retry</button>
       </div>
     } @else if (!data().items.length) {
       <div class="empty-state">
@@ -347,7 +324,7 @@
           <label>Temporary password *</label
           ><input type="password" formControlName="password" autocomplete="new-password" /><small
             class="field-help"
-            >Minimum 12 characters. Share it securely.</small
+            >Minimum 8 characters. Share it securely.</small
           >
         </div>
         <div class="field wide">

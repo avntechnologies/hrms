@@ -1,4 +1,8 @@
-<mat-sidenav-container class="app-frame">
+<mat-sidenav-container
+  class="app-frame"
+  [class.sidebar-collapsed]="collapsed() && !mobile()"
+  [autosize]="true"
+>
   <mat-sidenav
     #drawer
     [mode]="mobile() ? 'over' : 'side'"
@@ -9,7 +13,7 @@
     <div class="brand-block">
       <div class="brand-mark"><span></span><span></span><span></span></div>
       @if (!collapsed()) {
-        <div><strong>PeopleFlow</strong><small>Human capital cloud</small></div>
+        <div><strong>PeopleFlow</strong><small>HR management</small></div>
       }
     </div>
 
@@ -20,7 +24,6 @@
           <strong>{{ tenantLabel() }}</strong
           ><small>{{ auth.isEmployee() ? 'Employee access' : 'Administration access' }}</small>
         </div>
-        <mat-icon>unfold_more</mat-icon>
       }
     </div>
 
@@ -37,6 +40,7 @@
                 routerLinkActive="active"
                 [matTooltip]="collapsed() ? item.label : ''"
                 matTooltipPosition="right"
+                (click)="mobile() && drawer.close()"
               >
                 <mat-icon>{{ item.icon }}</mat-icon>
                 @if (!collapsed()) {
@@ -56,11 +60,12 @@
       <a
         routerLink="/settings/themes"
         routerLinkActive="active"
-        [matTooltip]="collapsed() ? 'Theme Studio' : ''"
+        [matTooltip]="collapsed() ? 'Appearance' : ''"
+        (click)="mobile() && drawer.close()"
       >
         <mat-icon>palette</mat-icon>
         @if (!collapsed()) {
-          <span>Theme Studio</span>
+          <span>Appearance</span>
         }
       </a>
     </div>
@@ -81,12 +86,11 @@
           type="search"
           [placeholder]="
             auth.hasPermission('employees.read')
-              ? 'Search people by name, email or ID…'
-              : 'Open employee services…'
+              ? 'Search people by name, email or ID...'
+              : 'Open employee services...'
           "
           (keydown.enter)="navigateSearch($event)"
         />
-        <kbd>⌘ K</kbd>
       </div>
       <div class="topbar-actions">
         <button mat-icon-button [matMenuTriggerFor]="themeMenu" aria-label="Change theme">
@@ -104,14 +108,13 @@
         </mat-menu>
         <button
           mat-icon-button
-          [matMenuTriggerFor]="notificationMenu"
-          aria-label="Notifications"
-          class="notification-button"
+          [matMenuTriggerFor]="quickActionsMenu"
+          aria-label="Open quick actions"
         >
-          <mat-icon>notifications</mat-icon>
+          <mat-icon>apps</mat-icon>
         </button>
-        <mat-menu #notificationMenu="matMenu" class="notification-menu">
-          <div class="menu-heading">Quick workflows</div>
+        <mat-menu #quickActionsMenu="matMenu">
+          <div class="menu-heading">Quick actions</div>
           @if (auth.isEmployee()) {
             <button mat-menu-item routerLink="/my">
               <mat-icon>schedule</mat-icon>Open daily attendance</button
@@ -141,7 +144,7 @@
             }
           }
         </mat-menu>
-        <button class="user-trigger" [matMenuTriggerFor]="userMenu">
+        <button class="user-trigger" [matMenuTriggerFor]="userMenu" aria-label="Open account menu">
           <span class="avatar">{{ initials() }}</span
           ><span class="user-copy"
             ><strong>{{ auth.user()?.displayName }}</strong
@@ -150,7 +153,7 @@
         </button>
         <mat-menu #userMenu="matMenu">
           <button mat-menu-item routerLink="/settings/themes">
-            <mat-icon>settings</mat-icon>Tenant settings
+            <mat-icon>palette</mat-icon>Appearance
           </button>
           <button mat-menu-item (click)="auth.logout()"><mat-icon>logout</mat-icon>Sign out</button>
         </mat-menu>

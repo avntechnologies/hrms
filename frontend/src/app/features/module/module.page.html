@@ -30,16 +30,6 @@
     </div>
   }
 
-  <section class="metric-grid module-metrics">
-    @for (metric of definition().highlights; track metric.label) {
-      <article class="app-card metric-card" [attr.data-tone]="metric.tone">
-        <div class="metric-label">{{ metric.label }}</div>
-        <div class="metric-value">{{ metric.value }}</div>
-        <div class="metric-trend">{{ metric.trend }}</div>
-      </article>
-    }
-  </section>
-
   @if (definition().views.length > 1) {
     <div class="workspace-tabs">
       @for (tab of definition().views; track tab.label; let i = $index) {
@@ -231,10 +221,6 @@
       @if (error()) {
         <div class="error-banner">{{ error() }}</div>
       }
-      <div class="form-intro">
-        <mat-icon>{{ currentAction()?.icon ?? definition().icon }}</mat-icon>
-        <p>Complete the information below. Required fields are marked with an asterisk.</p>
-      </div>
       <div class="form-grid">
         @for (field of currentAction()?.fields ?? []; track field.key) {
           <div

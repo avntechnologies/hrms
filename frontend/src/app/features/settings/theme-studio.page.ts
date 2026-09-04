@@ -1,9 +1,8 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
-import { AuthService } from '../../core/auth.service';
 import { TenantTheme, ThemeService } from '../../core/theme.service';
 
 @Component({
@@ -14,16 +13,12 @@ import { TenantTheme, ThemeService } from '../../core/theme.service';
 })
 export class ThemeStudioPage {
   readonly themes = inject(ThemeService);
-  readonly auth = inject(AuthService);
   readonly saved = signal(false);
-  readonly tenantName = signal(localStorage.getItem('peopleflow.tenantName') ?? 'PeopleFlow Demo');
-  readonly logoText = signal(localStorage.getItem('peopleflow.logoText') ?? 'PF');
   readonly customPrimary = signal(this.themes.current().primary);
   readonly customAccent = signal(this.themes.current().accent);
   readonly customRadius = signal(this.themes.current().radius);
   readonly compact = signal(this.themes.current().density === 'compact');
   readonly dark = signal(this.themes.current().scheme === 'dark');
-  readonly currentName = computed(() => this.themes.current().name);
   select(theme: TenantTheme): void {
     this.themes.select(theme);
     this.customPrimary.set(theme.primary);
@@ -44,8 +39,6 @@ export class ThemeStudioPage {
       surface: this.dark() ? '#08111f' : '#f5f7fb',
       sidebar: this.dark() ? '#030712' : '#071426',
     });
-    localStorage.setItem('peopleflow.tenantName', this.tenantName());
-    localStorage.setItem('peopleflow.logoText', this.logoText());
     this.flashSaved();
   }
   private flashSaved(): void {

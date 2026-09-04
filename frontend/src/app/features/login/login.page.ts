@@ -6,7 +6,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
-import { ThemeService } from '../../core/theme.service';
 
 @Component({
   selector: 'app-login-page',
@@ -18,14 +17,13 @@ export class LoginPage {
   private readonly fb = inject(FormBuilder);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
-  readonly themes = inject(ThemeService);
   readonly loading = signal(false);
   readonly error = signal('');
   readonly passwordVisible = signal(false);
   readonly form = this.fb.nonNullable.group({
     tenantSlug: ['', [Validators.required, Validators.minLength(3)]],
     email: ['', [Validators.required, Validators.email]],
-    password: ['', [Validators.required, Validators.minLength(12)]],
+    password: ['', [Validators.required, Validators.minLength(8)]],
     remember: [true],
   });
 

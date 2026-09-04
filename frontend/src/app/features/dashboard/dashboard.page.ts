@@ -17,6 +17,7 @@ export class DashboardPage implements OnInit {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
   readonly loading = signal(true);
+  readonly error = signal('');
   readonly dashboard = signal<Dashboard>({
     activeEmployees: 0,
     pendingLeaveRequests: 0,
@@ -34,12 +35,21 @@ export class DashboardPage implements OnInit {
   ];
 
   ngOnInit(): void {
+    this.load();
+  }
+
+  load(): void {
+    this.loading.set(true);
+    this.error.set('');
     this.api.dashboard().subscribe({
       next: (data) => {
         this.dashboard.set(data);
         this.loading.set(false);
       },
-      error: () => this.loading.set(false),
+      error: () => {
+        this.loading.set(false);
+        this.error.set('Unable to load workforce data. Check the connection and try again.');
+      },
     });
   }
 

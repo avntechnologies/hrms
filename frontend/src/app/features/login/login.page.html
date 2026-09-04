@@ -1,100 +1,117 @@
-<div class="login-page">
-  <section class="login-visual">
-    <div class="visual-grid"></div>
+<main class="login-page">
+  <aside class="login-brand" aria-label="PeopleFlow">
     <div class="brand-lockup">
-      <div class="login-mark"><i></i><i></i><i></i></div>
-      <div><strong>PeopleFlow</strong><span>Human capital cloud</span></div>
-    </div>
-    <div class="visual-copy">
-      <span class="visual-kicker">One workforce. One source of truth.</span>
-      <h1>People operations,<br /><em>beautifully connected.</em></h1>
-      <p>
-        Run every stage of the employee lifecycle with the clarity, control and intelligence your
-        teams deserve.
-      </p>
-    </div>
-    <div class="insight-panel">
-      <div class="insight-head"><span>Workforce pulse</span><strong>Live</strong></div>
-      <div class="insight-body">
-        <div class="pulse-stat"><small>Engagement</small><b>84%</b><span>↑ 5.2%</span></div>
-        <div class="pulse-chart">
-          @for (height of [34, 48, 41, 64, 58, 76, 70, 89, 82, 96, 90, 100]; track $index) {
-            <i [style.height.%]="height"></i>
-          }
-        </div>
-      </div>
-      <div class="insight-foot">
-        <span><i></i> 1,248 active employees</span><span>Last synced 2m ago</span>
+      <div class="login-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div>
+        <strong>PeopleFlow</strong>
+        <span>Human resources management</span>
       </div>
     </div>
-    <div class="visual-footer">
-      <span>Trusted by modern people teams</span>
-      <div>Northstar</div>
-      <div>VERTEX</div>
-      <div>Acme Group</div>
+    <div class="brand-message">
+      <span>Secure workforce operations</span>
+      <h1>One workspace for your people and processes.</h1>
+      <p>Sign in with the workspace assigned by your organization.</p>
     </div>
-  </section>
+    <div class="brand-security"><mat-icon>verified_user</mat-icon>Tenant-isolated access</div>
+  </aside>
 
   <section class="login-form-side">
     <div class="mobile-brand">
-      <div class="login-mark"><i></i><i></i><i></i></div>
-      <strong>PeopleFlow</strong>
+      <div class="login-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div><strong>PeopleFlow</strong><span>HRMS</span></div>
     </div>
+
     <div class="login-card">
-      <div class="welcome-badge"><mat-icon>verified_user</mat-icon> Secure tenant workspace</div>
-      <h2>Welcome back</h2>
-      <p>Sign in to continue to your company workspace.</p>
+      <div class="form-heading">
+        <span>Account access</span>
+        <h2>Sign in</h2>
+        <p>Enter your organization workspace and account details.</p>
+      </div>
+
       @if (error()) {
-        <div class="login-error"><mat-icon>error</mat-icon>{{ error() }}</div>
+        <div class="login-error" role="alert">
+          <mat-icon>error</mat-icon><span>{{ error() }}</span>
+        </div>
       }
-      <form [formGroup]="form" (ngSubmit)="submit()">
-        <label>Company workspace</label>
-        <div class="login-field">
-          <mat-icon>domain</mat-icon
-          ><input formControlName="tenantSlug" placeholder="your-company" /><span>.peopleflow</span>
+
+      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <div class="form-field">
+          <label for="tenantSlug">Company workspace</label>
+          <div class="login-field">
+            <mat-icon aria-hidden="true">domain</mat-icon>
+            <input
+              id="tenantSlug"
+              formControlName="tenantSlug"
+              placeholder="your-company"
+              autocomplete="organization"
+              autocapitalize="none"
+            />
+          </div>
+          @if (form.controls.tenantSlug.touched && form.controls.tenantSlug.invalid) {
+            <small class="field-error">Enter a workspace with at least 3 characters.</small>
+          }
         </div>
-        @if (form.controls.tenantSlug.touched && form.controls.tenantSlug.invalid) {
-          <small class="field-error">Enter your company workspace.</small>
-        }
-        <label>Work email</label>
-        <div class="login-field">
-          <mat-icon>mail</mat-icon
-          ><input type="email" formControlName="email" placeholder="name@company.com" />
+
+        <div class="form-field">
+          <label for="email">Work email</label>
+          <div class="login-field">
+            <mat-icon aria-hidden="true">mail</mat-icon>
+            <input
+              id="email"
+              type="email"
+              formControlName="email"
+              placeholder="name@company.com"
+              autocomplete="username"
+              autocapitalize="none"
+            />
+          </div>
+          @if (form.controls.email.touched && form.controls.email.invalid) {
+            <small class="field-error">Enter a valid work email address.</small>
+          }
         </div>
-        <label>Password</label>
-        <div class="login-field">
-          <mat-icon>lock</mat-icon
-          ><input
-            [type]="passwordVisible() ? 'text' : 'password'"
-            formControlName="password"
-            placeholder="Enter your password"
-          /><button
-            type="button"
-            (click)="passwordVisible.set(!passwordVisible())"
-            aria-label="Show password"
-          >
-            <mat-icon>{{ passwordVisible() ? 'visibility_off' : 'visibility' }}</mat-icon>
-          </button>
+
+        <div class="form-field">
+          <label for="password">Password</label>
+          <div class="login-field">
+            <mat-icon aria-hidden="true">lock</mat-icon>
+            <input
+              id="password"
+              [type]="passwordVisible() ? 'text' : 'password'"
+              formControlName="password"
+              placeholder="Enter your password"
+              autocomplete="current-password"
+            />
+            <button
+              type="button"
+              (click)="passwordVisible.set(!passwordVisible())"
+              [attr.aria-label]="passwordVisible() ? 'Hide password' : 'Show password'"
+            >
+              <mat-icon>{{ passwordVisible() ? 'visibility_off' : 'visibility' }}</mat-icon>
+            </button>
+          </div>
+          @if (form.controls.password.touched && form.controls.password.invalid) {
+            <small class="field-error">Password must contain at least 8 characters.</small>
+          }
         </div>
-        <div class="login-options">
-          <label class="remember"
-            ><input type="checkbox" formControlName="remember" /> Keep me signed in</label
-          ><span>Contact your HR administrator for access help</span>
-        </div>
+
+        <label class="remember">
+          <input type="checkbox" formControlName="remember" />
+          <span>Keep me signed in on this device</span>
+        </label>
+
         <button mat-raised-button class="login-submit" type="submit" [disabled]="loading()">
           @if (loading()) {
-            <mat-spinner diameter="18"></mat-spinner>
+            <mat-spinner diameter="20"></mat-spinner>
           } @else {
-            <span>Sign in to PeopleFlow →</span>
+            <span>Sign in</span>
           }
         </button>
       </form>
-      <p class="help-copy">
-        <mat-icon>lock</mat-icon> Your access is isolated to your company workspace.
+
+      <p class="access-help">
+        <mat-icon>help_outline</mat-icon>
+        Contact your HR administrator if you do not know your workspace or password.
       </p>
     </div>
-    <div class="login-footer">
-      <span>Privacy</span><span>Terms</span><span>Security</span><span>© 2026 PeopleFlow</span>
-    </div>
   </section>
-</div>
+</main>

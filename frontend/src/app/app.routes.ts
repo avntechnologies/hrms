@@ -98,7 +98,7 @@ export const routes: Routes = [
         path: 'settings/themes',
         loadComponent: () =>
           import('./features/settings/theme-studio.page').then((m) => m.ThemeStudioPage),
-        title: 'Theme Studio · PeopleFlow',
+        title: 'Appearance · PeopleFlow',
       },
       { path: '**', redirectTo: 'dashboard' },
     ],

@@ -134,7 +134,7 @@ public sealed class SelfService(
     }
     public async Task ChangePasswordAsync(ChangePasswordRequest r, CancellationToken ct)
     {
-        if (r.NewPassword.Length < 12) throw new DomainException("New password must be at least 12 characters.");
+        if (r.NewPassword.Length < 8) throw new DomainException("New password must be at least 8 characters.");
         if (r.NewPassword == r.CurrentPassword) throw new DomainException("New password must be different from the current password.");
         var user = await users.GetByIdAsync(currentUser.UserId ?? throw new UnauthorizedAccessException("User identity is missing."), ct) ?? throw new KeyNotFoundException("User not found.");
         if (!passwordHasher.Verify(r.CurrentPassword, user.PasswordHash)) throw new DomainException("Current password is incorrect.");

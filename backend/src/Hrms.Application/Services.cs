@@ -196,7 +196,7 @@ public sealed class TenantService(
         var slug = request.Slug.Trim().ToLowerInvariant();
         if (slug.Length < 3 || slug.Any(c => !char.IsLetterOrDigit(c) && c != '-'))
             throw new DomainException("Slug must be at least 3 characters and contain only letters, numbers, or hyphens.");
-        if (request.AdminPassword.Length < 12) throw new DomainException("Admin password must be at least 12 characters.");
+        if (request.AdminPassword.Length < 8) throw new DomainException("Admin password must be at least 8 characters.");
         if (await tenants.AnyAsync(x => x.Slug == slug, ct)) throw new DomainException("Tenant slug is already in use.");
 
         var tenant = new Tenant
@@ -336,7 +336,7 @@ public sealed class IdentityAdminService(IRepository<UserAccount> users, IReposi
     public async Task<IReadOnlyList<RoleDto>> ListRolesAsync(CancellationToken ct) => (await roles.ListAsync(orderBy: q => q.OrderBy(x => x.Name), cancellationToken: ct)).Select(Map).ToArray();
     public async Task<UserAdminDto> CreateUserAsync(CreateUserRequest r, CancellationToken ct)
     {
-        if (r.Password.Length < 12) throw new DomainException("Password must be at least 12 characters.");
+        if (r.Password.Length < 8) throw new DomainException("Password must be at least 8 characters.");
         var email = r.Email.Trim().ToLowerInvariant(); if (await users.AnyAsync(x => x.Email == email, ct)) throw new DomainException("User email already exists.");
         var validRoles = await roles.ListAsync(x => r.RoleIds.Contains(x.Id), cancellationToken: ct); if (validRoles.Count != r.RoleIds.Distinct().Count()) throw new DomainException("One or more roles are invalid.");
         Employee? employee = null;
