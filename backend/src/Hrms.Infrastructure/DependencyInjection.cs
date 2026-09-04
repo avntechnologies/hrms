@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text;
 using Hrms.Application;
 using Hrms.Infrastructure.Identity;
+using Hrms.Infrastructure.Documents;
 using Hrms.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -30,6 +31,7 @@ public static class DependencyInjection
         var jwt = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
         if (Encoding.UTF8.GetByteCount(jwt.SigningKey) < 32) throw new InvalidOperationException("Jwt:SigningKey must be at least 32 bytes.");
         services.AddSingleton<ITokenService, JwtTokenService>();
+        services.AddSingleton<IDocumentStorage, LocalDocumentStorage>();
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
         {
             options.MapInboundClaims = false;
@@ -57,7 +59,12 @@ public static class DependencyInjection
         services.AddScoped<IExpenseService, ExpenseService>(); services.AddScoped<ITrainingService, TrainingService>();
         services.AddScoped<IDashboardService, DashboardService>(); services.AddScoped<IAuditReader, AuditReader>();
         services.AddScoped<ISelfService, SelfService>();
+        services.AddScoped<IWorkManagementService, WorkManagementService>();
+        services.AddScoped<IDocumentService, DocumentService>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<ICompanyProfileService, CompanyProfileService>();
         services.AddScoped<DatabaseInitializer>();
+        services.AddScoped<DemoCompanySeeder>();
         return services;
     }
 }

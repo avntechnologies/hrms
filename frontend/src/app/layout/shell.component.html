@@ -11,19 +11,13 @@
     class="app-sidebar"
   >
     <div class="brand-block">
-      <div class="brand-mark"><span></span><span></span><span></span></div>
-      @if (!collapsed()) {
-        <div><strong>PeopleFlow</strong><small>HR management</small></div>
+      @if (companyLogoUrl()) {
+        <img class="company-logo" [src]="companyLogoUrl()" [alt]="companyName()" />
+      } @else {
+        <div class="brand-mark"><span></span><span></span><span></span></div>
       }
-    </div>
-
-    <div class="tenant-card" [class.tenant-card--mini]="collapsed()">
-      <div class="tenant-logo">PF</div>
       @if (!collapsed()) {
-        <div class="tenant-copy">
-          <strong>{{ tenantLabel() }}</strong
-          ><small>{{ auth.isEmployee() ? 'Employee access' : 'Administration access' }}</small>
-        </div>
+        <div class="brand-copy"><strong>{{ companyName() }}</strong><small>PeopleFlow HRMS</small></div>
       }
     </div>
 
@@ -93,18 +87,23 @@
         />
       </div>
       <div class="topbar-actions">
-        <button mat-icon-button [matMenuTriggerFor]="themeMenu" aria-label="Change theme">
-          <mat-icon>contrast</mat-icon>
+        <button class="notification-trigger" mat-icon-button [matMenuTriggerFor]="notificationMenu" aria-label="Open notifications">
+          <mat-icon>notifications</mat-icon>
+          @if (notifications.feed().unreadCount) { <span class="notification-badge">{{ notifications.feed().unreadCount > 99 ? '99+' : notifications.feed().unreadCount }}</span> }
         </button>
-        <mat-menu #themeMenu="matMenu">
-          @for (theme of themes.presets; track theme.id) {
-            <button mat-menu-item (click)="themes.select(theme)">
-              <span class="theme-dot" [style.background]="theme.primary"></span>{{ theme.name }}
+        <mat-menu #notificationMenu="matMenu" class="notification-menu">
+          <div class="notification-head" (click)="$event.stopPropagation()">
+            <strong>Notifications</strong>
+            @if (notifications.feed().unreadCount) { <button type="button" (click)="markAllNotificationsRead()">Mark all read</button> }
+          </div>
+          @for (item of notifications.feed().items; track item.id) {
+            <button mat-menu-item class="notification-item" [class.unread]="!item.isRead" (click)="openNotification(item)">
+              <span class="notification-icon"><mat-icon>{{ item.kind === 'work' ? 'task_alt' : 'notifications' }}</mat-icon></span>
+              <span class="notification-copy"><strong>{{ item.title }}</strong><span>{{ item.message }}</span><small>{{ item.createdAt | date:'medium' }}</small></span>
             </button>
+          } @empty {
+            <div class="notification-empty"><mat-icon>notifications_none</mat-icon><span>You are all caught up</span></div>
           }
-          <button mat-menu-item routerLink="/settings/themes">
-            <mat-icon>tune</mat-icon>Customize tenant theme
-          </button>
         </mat-menu>
         <button
           mat-icon-button
@@ -116,6 +115,11 @@
         <mat-menu #quickActionsMenu="matMenu">
           <div class="menu-heading">Quick actions</div>
           @if (auth.isEmployee()) {
+            @if (auth.hasPermission('work.read')) {
+              <button mat-menu-item routerLink="/work">
+                <mat-icon>view_kanban</mat-icon>Open work management
+              </button>
+            }
             <button mat-menu-item routerLink="/my">
               <mat-icon>schedule</mat-icon>Open daily attendance</button
             ><button mat-menu-item routerLink="/my-services">
@@ -145,7 +149,7 @@
           }
         </mat-menu>
         <button class="user-trigger" [matMenuTriggerFor]="userMenu" aria-label="Open account menu">
-          <span class="avatar">{{ initials() }}</span
+          <span class="avatar">@if (profilePhotoUrl()) { <img [src]="profilePhotoUrl()" alt="" /> } @else { {{ initials() }} }</span
           ><span class="user-copy"
             ><strong>{{ auth.user()?.displayName }}</strong
             ><small>{{ auth.user()?.email }}</small></span
@@ -159,6 +163,23 @@
         </mat-menu>
       </div>
     </header>
-    <main><router-outlet /></main>
+    <div
+      class="global-progress"
+      [class.visible]="loading.visible()"
+      [attr.aria-hidden]="!loading.visible()"
+      role="progressbar"
+      aria-label="Loading"
+    ><span></span></div>
+    <main [attr.aria-busy]="loading.visible()"><router-outlet /></main>
   </mat-sidenav-content>
 </mat-sidenav-container>
+
+<div class="toast-stack" aria-live="polite" aria-atomic="true">
+  @for (toast of toasts.messages(); track toast.id) {
+    <div class="app-toast" [class]="'app-toast ' + toast.tone">
+      <mat-icon>{{ toast.tone === 'success' ? 'check_circle' : toast.tone === 'error' ? 'error' : 'info' }}</mat-icon>
+      <span>{{ toast.text }}</span>
+      <button mat-icon-button type="button" aria-label="Dismiss message" (click)="toasts.dismiss(toast.id)"><mat-icon>close</mat-icon></button>
+    </div>
+  }
+</div>

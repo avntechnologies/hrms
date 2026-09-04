@@ -4,15 +4,37 @@
       <div class="eyebrow">Settings</div>
       <h1 class="page-title">Appearance</h1>
       <p class="page-description">
-        Choose how PeopleFlow looks on this browser. Your preference is saved for this workspace.
+        Manage company identity and choose how the application looks on this browser.
       </p>
-    </div>
-    <div class="save-state" [class.visible]="saved()" role="status">
-      <mat-icon>check_circle</mat-icon>Saved
     </div>
   </div>
 
   <section class="theme-layout">
+    @if (auth.hasPermission('identity.manage') && company.profile(); as profile) {
+      <article class="app-card settings-card identity-card">
+        <div class="settings-head">
+          <div><h2>Company identity</h2><p>Your company name and logo appear in the application navigation.</p></div>
+        </div>
+        <div class="identity-layout">
+          <div class="company-fields">
+            <div class="field"><label for="companyName">Company name</label><input id="companyName" [ngModel]="companyName()" (ngModelChange)="companyName.set($event)" /></div>
+            <div class="field"><label for="legalName">Legal name</label><input id="legalName" [ngModel]="legalName()" (ngModelChange)="legalName.set($event)" /></div>
+            <div class="field"><label for="currency">Currency</label><input id="currency" maxlength="3" [ngModel]="currency()" (ngModelChange)="currency.set($event)" /></div>
+            <div class="field"><label for="timeZone">Time zone</label><input id="timeZone" [ngModel]="timeZone()" (ngModelChange)="timeZone.set($event)" /></div>
+            <div class="field"><label for="locale">Locale</label><input id="locale" [ngModel]="locale()" (ngModelChange)="locale.set($event)" /></div>
+            <div class="setting-actions identity-actions">
+              <button mat-raised-button class="primary-button" [disabled]="savingCompany() || !companyName().trim()" (click)="saveCompany()">
+                @if (savingCompany()) { <mat-spinner diameter="17" /> } @else { <mat-icon>save</mat-icon> } Save company
+              </button>
+            </div>
+          </div>
+          <app-document ownerType="Tenant" [ownerId]="profile.id" category="logo" label="Company logo"
+            [replaceMode]="true" [maxFiles]="1" [allowedExtensions]="['jpg','jpeg','png','webp']"
+            (documentsChanged)="refreshCompanyBranding()" />
+        </div>
+      </article>
+    }
+
     <article class="app-card settings-card">
       <div class="settings-head">
         <div>

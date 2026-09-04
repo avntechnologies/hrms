@@ -13,5 +13,10 @@ public enum AssetStatus { Available, Assigned, Maintenance, Retired, Lost }
 public enum ExpenseStatus { Draft, Submitted, Approved, Rejected, Reimbursed }
 public enum EnrollmentStatus { Enrolled, InProgress, Completed, Cancelled }
 public enum DocumentStatus { Pending, Verified, Rejected, Expired }
+public enum DocumentOwnerType { Tenant, User, Employee, WorkItem, LeaveRequest, ExpenseClaim, Candidate }
 public enum WorkflowStatus { Pending, Approved, Rejected, Cancelled }
+public enum WorkItemType { Epic, Story, Task, Bug, Subtask }
+public enum WorkItemStatus { Backlog, ToDo, InProgress, InReview, Done, Cancelled }
+public enum WorkItemPriority { Lowest, Low, Medium, High, Highest, Critical }
+public enum WorkItemResolution { Done, Fixed, Duplicate, CannotReproduce, WontDo, Cancelled }
 

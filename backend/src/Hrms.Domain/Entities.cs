@@ -137,6 +137,29 @@ public sealed class EmployeeDocument : TenantEntity
     public DocumentStatus Status { get; set; } = DocumentStatus.Pending;
 }
 
+public sealed class StoredDocument : TenantEntity
+{
+    public DocumentOwnerType OwnerType { get; set; }
+    public Guid OwnerId { get; set; }
+    public string Category { get; set; } = "attachment";
+    public string FileName { get; set; } = string.Empty;
+    public string Extension { get; set; } = string.Empty;
+    public string ContentType { get; set; } = "application/octet-stream";
+    public long SizeBytes { get; set; }
+    public string StorageKey { get; set; } = string.Empty;
+    public Guid? UploadedByUserId { get; set; }
+}
+
+public sealed class UserNotification : TenantEntity
+{
+    public Guid UserId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string Kind { get; set; } = "info";
+    public string? Link { get; set; }
+    public DateTimeOffset? ReadAt { get; set; }
+}
+
 public sealed class Shift : TenantEntity
 {
     public string Name { get; set; } = string.Empty;
@@ -387,4 +410,73 @@ public sealed class OutboxMessage : TenantEntity
     public DateTimeOffset? ProcessedAt { get; set; }
     public string? Error { get; set; }
     public int RetryCount { get; set; }
+}
+
+public sealed class WorkProject : TenantEntity
+{
+    public string Key { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public Guid? LeadEmployeeId { get; set; }
+    public int NextItemNumber { get; set; } = 1;
+    public bool IsActive { get; set; } = true;
+}
+
+public sealed class WorkProjectMember : TenantEntity
+{
+    public Guid ProjectId { get; set; }
+    public Guid EmployeeId { get; set; }
+    public bool CanCreateItems { get; set; } = true;
+    public bool CanAssignItems { get; set; }
+    public bool CanTransitionItems { get; set; } = true;
+    public bool CanLogWork { get; set; } = true;
+    public bool CanViewAllWorklogs { get; set; }
+}
+
+public sealed class WorkItem : TenantEntity
+{
+    public Guid ProjectId { get; set; }
+    public int Number { get; set; }
+    public string Key { get; set; } = string.Empty;
+    public Guid? ParentId { get; set; }
+    public WorkItemType Type { get; set; } = WorkItemType.Task;
+    public string Summary { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public WorkItemStatus Status { get; set; } = WorkItemStatus.Backlog;
+    public WorkItemPriority Priority { get; set; } = WorkItemPriority.Medium;
+    public Guid? ReporterEmployeeId { get; set; }
+    public Guid? AssigneeEmployeeId { get; set; }
+    public DateOnly? DueDate { get; set; }
+    public int? OriginalEstimateMinutes { get; set; }
+    public int? RemainingEstimateMinutes { get; set; }
+    public decimal? StoryPoints { get; set; }
+    public string LabelsCsv { get; set; } = string.Empty;
+    public WorkItemResolution? Resolution { get; set; }
+    public DateTimeOffset? ResolvedAt { get; set; }
+}
+
+public sealed class WorkItemComment : TenantEntity
+{
+    public Guid WorkItemId { get; set; }
+    public Guid? AuthorEmployeeId { get; set; }
+    public string Body { get; set; } = string.Empty;
+}
+
+public sealed class WorkLog : TenantEntity
+{
+    public Guid WorkItemId { get; set; }
+    public Guid EmployeeId { get; set; }
+    public DateOnly WorkDate { get; set; }
+    public int Minutes { get; set; }
+    public string? Description { get; set; }
+}
+
+public sealed class WorkItemHistory : TenantEntity
+{
+    public Guid WorkItemId { get; set; }
+    public Guid? ActorEmployeeId { get; set; }
+    public string EventType { get; set; } = string.Empty;
+    public string? FieldName { get; set; }
+    public string? BeforeValue { get; set; }
+    public string? AfterValue { get; set; }
 }

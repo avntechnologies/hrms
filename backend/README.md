@@ -15,6 +15,7 @@ A .NET 10 / ASP.NET Core backend for a multi-company HRMS SaaS product. It uses 
 - Employee self-service: profile dashboard, attendance, leave/balances, timesheets, expenses, learning, performance, assets, documents, announcements, payslips and password changes.
 - Manager self-service: direct-report directory plus scoped leave, timesheet, expense and performance review workflows.
 - Platform concerns: mandatory tenant filters, tenant-scoped unique indexes, pagination, audit logs, outbox table, correlation IDs, RFC 7807 errors, rate limiting, CORS, health endpoint and OpenAPI.
+- Work management: projects, project-member capabilities, generated ticket keys, standard workflows, comments, estimates, worklogs, activity history, and date-matrix reporting.
 
 Country-specific payroll tax, statutory filing, bank-payment rails, e-signatures, object-storage upload, email/SMS delivery and SSO/SCIM are integration points, not safe universal defaults. They must be implemented and certified for each target market before claiming legal or payroll compliance.
 

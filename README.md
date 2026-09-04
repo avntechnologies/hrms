@@ -53,6 +53,17 @@ Location is sensitive personal data. Before production use, configure a retentio
 - Angular Material with the Azure Material 3 theme; Tailwind CSS 4 and SCSS
 - Tenant theme presets, custom colors, dark mode, density, and corner radius
 - Automatic access-token refresh, refresh-token rotation, lockout, and session revocation
+- Project-based work management with ticket workflows, comments, estimates, worklogs, granular member access, activity history, and ticket-by-date reports
+
+## Demo company
+
+The configured database contains the idempotent `northstar-demo` showcase tenant with administrator, HR, payroll, manager, Work Coordinator, and Work Contributor accounts plus populated company data. See the [customer user guide](docs/CUSTOMER-USER-GUIDE.md) for credentials and a complete demonstration walkthrough.
+
+To create the demo tenant in another configured database:
+
+```powershell
+dotnet run --project backend/src/Hrms.Api/Hrms.Api.csproj -c Release -- --seed-demo
+```
 
 ## Build and test
 

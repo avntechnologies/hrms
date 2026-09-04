@@ -1,11 +1,13 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { catchError, switchMap, throwError } from 'rxjs';
+import { catchError, finalize, switchMap, throwError } from 'rxjs';
 import { AuthService } from './auth.service';
+import { LoadingService, SKIP_GLOBAL_LOADING } from './loading.service';
 
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
   const auth = inject(AuthService);
+  const loading = inject(LoadingService);
   const router = inject(Router);
   const token = auth.accessToken();
   const tenantId = auth.tenantId();
@@ -19,6 +21,8 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
       })
     : request;
 
+  const showGlobalLoading = request.method === 'GET' && !request.context.get(SKIP_GLOBAL_LOADING);
+  if (showGlobalLoading) loading.begin();
   return next(secured).pipe(
     catchError((error: HttpErrorResponse) => {
       if (
@@ -50,5 +54,6 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
       }
       return throwError(() => error);
     }),
+    finalize(() => showGlobalLoading && loading.end()),
   );
 };

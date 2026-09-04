@@ -200,3 +200,170 @@ export interface ModuleDefinition {
     tone: 'blue' | 'green' | 'amber' | 'violet';
   }[];
 }
+
+export interface WorkProject {
+  id: string;
+  key: string;
+  name: string;
+  description?: string;
+  leadEmployeeId?: string;
+  leadName?: string;
+  isActive: boolean;
+  memberCount: number;
+  version: number;
+}
+
+export interface WorkProjectMember {
+  id: string;
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  canCreateItems: boolean;
+  canAssignItems: boolean;
+  canTransitionItems: boolean;
+  canLogWork: boolean;
+  canViewAllWorklogs: boolean;
+}
+
+export interface WorkItem {
+  id: string;
+  projectId: string;
+  projectKey: string;
+  key: string;
+  parentId?: string;
+  type: string;
+  summary: string;
+  status: string;
+  priority: string;
+  reporterEmployeeId?: string;
+  reporterName?: string;
+  assigneeEmployeeId?: string;
+  assigneeName?: string;
+  dueDate?: string;
+  originalEstimateMinutes?: number;
+  remainingEstimateMinutes?: number;
+  loggedMinutes: number;
+  storyPoints?: number;
+  labels: string[];
+  resolution?: string;
+  resolvedAt?: string;
+  createdAt: string;
+  version: number;
+}
+
+export interface WorkComment {
+  id: string;
+  authorEmployeeId?: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  updatedAt?: string;
+  canEdit: boolean;
+  version: number;
+}
+
+export interface WorkLog {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  workDate: string;
+  minutes: number;
+  description?: string;
+  createdAt: string;
+  canEdit: boolean;
+  version: number;
+}
+
+export interface WorkHistory {
+  id: string;
+  actorEmployeeId?: string;
+  actorName: string;
+  eventType: string;
+  fieldName?: string;
+  beforeValue?: string;
+  afterValue?: string;
+  createdAt: string;
+}
+
+export interface WorkItemDetail {
+  item: WorkItem;
+  description?: string;
+  comments: WorkComment[];
+  worklogs: WorkLog[];
+  history: WorkHistory[];
+  access?: WorkProjectMember;
+}
+
+export interface WorkOverview {
+  openItems: number;
+  dueSoon: number;
+  overdue: number;
+  completedThisMonth: number;
+  loggedMinutesThisMonth: number;
+}
+
+export interface WorkTimeReportRow {
+  workItemId: string;
+  key: string;
+  summary: string;
+  assigneeName?: string;
+  minutesByDate: Record<string, number>;
+  totalMinutes: number;
+}
+
+export interface WorkTimeReport {
+  from: string;
+  to: string;
+  dates: string[];
+  rows: WorkTimeReportRow[];
+  totalMinutes: number;
+}
+
+export type DocumentOwnerType =
+  | 'Tenant'
+  | 'User'
+  | 'Employee'
+  | 'WorkItem'
+  | 'LeaveRequest'
+  | 'ExpenseClaim'
+  | 'Candidate';
+
+export interface StoredDocument {
+  id: string;
+  ownerType: DocumentOwnerType;
+  ownerId: string;
+  category: string;
+  fileName: string;
+  extension: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+  uploadedByUserId?: string;
+}
+
+export interface CompanyProfile {
+  id: string;
+  name: string;
+  legalName?: string;
+  slug: string;
+  defaultCurrency: string;
+  timeZone: string;
+  locale: string;
+  logoDocumentId?: string;
+  version: number;
+}
+
+export interface UserNotification {
+  id: string;
+  title: string;
+  message: string;
+  kind: string;
+  link?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface NotificationFeed {
+  items: UserNotification[];
+  unreadCount: number;
+}

@@ -1,5 +1,6 @@
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
-import { Component, computed, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
+import { Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
@@ -7,7 +8,12 @@ import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../core/auth.service';
-import { ThemeService } from '../core/theme.service';
+import { CompanyProfileService } from '../core/company-profile.service';
+import { DocumentService } from '../core/document.service';
+import { LoadingService } from '../core/loading.service';
+import { UserNotification } from '../core/models';
+import { NotificationService } from '../core/notification.service';
+import { ToastService } from '../core/toast.service';
 
 interface NavItem {
   label: string;
@@ -34,18 +40,27 @@ interface NavSection {
     MatIconModule,
     MatMenuModule,
     MatTooltipModule,
+    DatePipe,
   ],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
 })
-export class ShellComponent {
+export class ShellComponent implements OnDestroy {
   readonly auth = inject(AuthService);
-  readonly themes = inject(ThemeService);
+  readonly loading = inject(LoadingService);
+  readonly company = inject(CompanyProfileService);
+  readonly notifications = inject(NotificationService);
+  readonly toasts = inject(ToastService);
+  private readonly documents = inject(DocumentService);
   private readonly breakpoint = inject(BreakpointObserver);
   private readonly router = inject(Router);
 
   readonly mobile = signal(false);
   readonly collapsed = signal(false);
+  readonly companyLogoUrl = signal<string | null>(null);
+  readonly profilePhotoUrl = signal<string | null>(null);
+  private readonly notificationTimer: ReturnType<typeof setInterval>;
+  private readonly companyLogoEffect = effect(() => this.loadImage(this.company.profile()?.logoDocumentId, this.companyLogoUrl));
   readonly initials = computed(() =>
     (this.auth.user()?.displayName ?? 'HR')
       .split(' ')
@@ -54,9 +69,7 @@ export class ShellComponent {
       .join('')
       .toUpperCase(),
   );
-  readonly tenantLabel = computed(() =>
-    this.auth.user()?.roles.includes('PLATFORM_ADMIN') ? 'Platform workspace' : 'Tenant workspace',
-  );
+  readonly companyName = computed(() => this.company.profile()?.name ?? 'PeopleFlow');
 
   readonly navigation: NavSection[] = [
     {
@@ -117,6 +130,17 @@ export class ShellComponent {
       ],
     },
     {
+      label: 'Delivery',
+      items: [
+        {
+          label: 'Work management',
+          icon: 'view_kanban',
+          route: '/work',
+          permission: 'work.read',
+        },
+      ],
+    },
+    {
       label: 'Talent',
       items: [
         {
@@ -153,6 +177,19 @@ export class ShellComponent {
     this.breakpoint
       .observe([Breakpoints.Handset, Breakpoints.TabletPortrait])
       .subscribe((state) => this.mobile.set(state.matches));
+    this.company.load().subscribe({ error: () => undefined });
+    const employeeId = this.auth.user()?.employeeId;
+    if (employeeId) this.documents.list('Employee', employeeId, 'profile').subscribe({
+      next: (items) => this.loadImage(items[0]?.id, this.profilePhotoUrl), error: () => undefined,
+    });
+    this.refreshNotifications();
+    this.notificationTimer = setInterval(() => this.refreshNotifications(), 30000);
+  }
+
+  ngOnDestroy(): void {
+    clearInterval(this.notificationTimer);
+    this.revoke(this.companyLogoUrl());
+    this.revoke(this.profilePhotoUrl());
   }
 
   toggleNavigation(): void {
@@ -176,4 +213,27 @@ export class ShellComponent {
       void this.router.navigate(['/employees'], { queryParams: { search: value } });
     else if (value) void this.router.navigate(['/my-services']);
   }
+
+  openNotification(item: UserNotification): void {
+    if (!item.isRead) this.notifications.markRead(item.id).subscribe({ error: () => undefined });
+    if (item.link) void this.router.navigateByUrl(item.link);
+  }
+
+  markAllNotificationsRead(): void {
+    this.notifications.markAllRead().subscribe({ error: () => undefined });
+  }
+
+  private refreshNotifications(): void {
+    this.notifications.load().subscribe({ error: () => undefined });
+  }
+
+  private loadImage(id: string | undefined, target: { set(value: string | null): void; (): string | null }): void {
+    if (!id) { this.revoke(target()); target.set(null); return; }
+    this.documents.content(id).subscribe({ next: (blob) => {
+      this.revoke(target());
+      target.set(URL.createObjectURL(blob));
+    }, error: () => undefined });
+  }
+
+  private revoke(url: string | null): void { if (url) URL.revokeObjectURL(url); }
 }

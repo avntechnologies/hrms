@@ -25,6 +25,8 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<EmployeeEmergencyContact> EmployeeEmergencyContacts => Set<EmployeeEmergencyContact>();
     public DbSet<EmployeeDocument> EmployeeDocuments => Set<EmployeeDocument>();
+    public DbSet<StoredDocument> StoredDocuments => Set<StoredDocument>();
+    public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
     public DbSet<Shift> Shifts => Set<Shift>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<TimesheetEntry> TimesheetEntries => Set<TimesheetEntry>();
@@ -47,6 +49,12 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
     public DbSet<Announcement> Announcements => Set<Announcement>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<WorkProject> WorkProjects => Set<WorkProject>();
+    public DbSet<WorkProjectMember> WorkProjectMembers => Set<WorkProjectMember>();
+    public DbSet<WorkItem> WorkItems => Set<WorkItem>();
+    public DbSet<WorkItemComment> WorkItemComments => Set<WorkItemComment>();
+    public DbSet<WorkLog> WorkLogs => Set<WorkLog>();
+    public DbSet<WorkItemHistory> WorkItemHistories => Set<WorkItemHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -80,6 +88,17 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
         modelBuilder.Entity<Asset>().HasIndex(x => new { x.TenantId, x.AssetTag }).IsUnique();
         modelBuilder.Entity<ExpenseClaim>().HasIndex(x => new { x.TenantId, x.ClaimNumber }).IsUnique();
         modelBuilder.Entity<TrainingEnrollment>().HasIndex(x => new { x.TenantId, x.CourseId, x.EmployeeId });
+        modelBuilder.Entity<WorkProject>().HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
+        modelBuilder.Entity<WorkProjectMember>().HasIndex(x => new { x.TenantId, x.ProjectId, x.EmployeeId }).IsUnique();
+        modelBuilder.Entity<WorkItem>().HasIndex(x => new { x.TenantId, x.ProjectId, x.Number }).IsUnique();
+        modelBuilder.Entity<WorkItem>().HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
+        modelBuilder.Entity<WorkItem>().HasIndex(x => new { x.TenantId, x.Status, x.AssigneeEmployeeId });
+        modelBuilder.Entity<WorkItemComment>().HasIndex(x => new { x.TenantId, x.WorkItemId, x.CreatedAt });
+        modelBuilder.Entity<WorkLog>().HasIndex(x => new { x.TenantId, x.WorkItemId, x.WorkDate });
+        modelBuilder.Entity<WorkLog>().HasIndex(x => new { x.TenantId, x.EmployeeId, x.WorkDate });
+        modelBuilder.Entity<WorkItemHistory>().HasIndex(x => new { x.TenantId, x.WorkItemId, x.CreatedAt });
+        modelBuilder.Entity<StoredDocument>().HasIndex(x => new { x.TenantId, x.OwnerType, x.OwnerId, x.Category, x.CreatedAt });
+        modelBuilder.Entity<UserNotification>().HasIndex(x => new { x.TenantId, x.UserId, x.ReadAt, x.CreatedAt });
 
         foreach (var property in modelBuilder.Model.GetEntityTypes().SelectMany(x => x.GetProperties()).Where(x => x.ClrType == typeof(decimal) || x.ClrType == typeof(decimal?)))
         {

@@ -36,6 +36,13 @@
   gap: 14px;
 }
 
+.identity-card { grid-column: 1 / -1; }
+.identity-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.75fr); gap: 20px; align-items: start; }
+.company-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.identity-actions { grid-column: 1 / -1; margin-top: 0; }
+.identity-actions button { min-width: 138px; }
+.identity-actions mat-spinner { display: inline-block; margin-right: 7px; }
+
 .settings-card {
   padding: 20px;
 }
@@ -219,11 +226,14 @@
   .theme-layout {
     grid-template-columns: 1fr;
   }
+
+  .identity-layout { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 620px) {
   .preset-grid,
-  .setting-grid {
+  .setting-grid,
+  .company-fields {
     grid-template-columns: 1fr;
   }
 

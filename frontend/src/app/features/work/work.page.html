@@ -1,0 +1,306 @@
+<div class="page-shell work-shell">
+  <div class="page-header">
+    <div>
+      <div class="eyebrow">Delivery · Work management</div>
+      <h1 class="page-title">Work</h1>
+      <p class="page-description">Plan, assign and track delivery with one auditable record of status, discussion and time.</p>
+    </div>
+    <div class="header-actions">
+      @if (canManage()) {
+        <button mat-stroked-button (click)="openProjectCreate()"><mat-icon>create_new_folder</mat-icon>New project</button>
+      }
+      @if (canCreate()) {
+        <button mat-raised-button class="primary-button" (click)="openCreate()" [disabled]="!projects().length">
+          <mat-icon>add</mat-icon>Create item
+        </button>
+      }
+    </div>
+  </div>
+
+  @if (success()) {
+    <div class="success-banner"><mat-icon>check_circle</mat-icon>{{ success() }}
+      <button mat-icon-button (click)="success.set('')" aria-label="Dismiss message"><mat-icon>close</mat-icon></button>
+    </div>
+  }
+  @if (error()) {
+    <div class="error-banner"><span>{{ error() }}</span>
+      <button mat-icon-button (click)="error.set('')" aria-label="Dismiss error"><mat-icon>close</mat-icon></button>
+    </div>
+  }
+
+  <div class="work-metrics">
+    <div class="work-metric"><span>Open work</span><strong>{{ overview().openItems }}</strong></div>
+    <div class="work-metric"><span>Due in 7 days</span><strong>{{ overview().dueSoon }}</strong></div>
+    <div class="work-metric" [class.alert]="overview().overdue"><span>Overdue</span><strong>{{ overview().overdue }}</strong></div>
+    <div class="work-metric"><span>Completed this month</span><strong>{{ overview().completedThisMonth }}</strong></div>
+    <div class="work-metric"><span>Time this month</span><strong>{{ formatMinutes(overview().loggedMinutesThisMonth) }}</strong></div>
+  </div>
+
+  <div class="work-controls">
+    <div class="project-picker">
+      <label for="project-select">Project</label>
+      <select id="project-select" [value]="selectedProjectId()" (change)="selectProject($any($event.target).value)">
+        @if (!projects().length) { <option value="">No projects available</option> }
+        @for (project of projects(); track project.id) {
+          <option [value]="project.id">{{ project.key }} · {{ project.name }}</option>
+        }
+      </select>
+    </div>
+    <div class="work-tabs" role="tablist" aria-label="Work views">
+      @for (tab of tabs; track tab.key) {
+        @if (tab.key !== 'projects' || canManage()) {
+          <button type="button" [class.active]="activeTab() === tab.key" (click)="setTab(tab.key)" role="tab"
+            [attr.aria-selected]="activeTab() === tab.key">
+            <mat-icon>{{ tab.icon }}</mat-icon><span>{{ tab.label }}</span>
+          </button>
+        }
+      }
+    </div>
+  </div>
+
+  <div class="work-section-progress" [class.visible]="itemsLoading() || reportLoading()" aria-hidden="true"><span></span></div>
+
+  @if ((loading() || itemsLoading()) && !items().items.length) {
+    <div class="work-loading"><mat-spinner diameter="32"></mat-spinner><span>Loading work...</span></div>
+  } @else if (!projects().length) {
+    <div class="work-empty">
+      <mat-icon>view_kanban</mat-icon><h2>No work projects yet</h2>
+      <p>Create a project, add members and begin tracking delivery.</p>
+      @if (canManage()) { <button mat-raised-button class="primary-button" (click)="openProjectCreate()">Create first project</button> }
+    </div>
+  } @else {
+    @if (activeTab() === 'board') {
+      <div class="board" role="region" aria-label="Work board">
+        @for (status of boardStatuses; track status) {
+          <section class="board-column">
+            <header><span class="status-dot" [attr.data-status]="status"></span><h2>{{ statusLabel(status) }}</h2><b>{{ itemsFor(status).length }}</b></header>
+            <div class="board-items">
+              @for (item of itemsFor(status); track item.id) {
+                <button class="work-card" type="button" (click)="openItem(item.id)">
+                  <div class="card-top"><span class="type-badge" [attr.data-type]="item.type">{{ item.type }}</span>
+                    <mat-icon [class]="'priority ' + item.priority.toLowerCase()">{{ priorityIcon(item.priority) }}</mat-icon>
+                  </div>
+                  <strong>{{ item.summary }}</strong>
+                  <div class="label-row">@for (label of item.labels.slice(0, 3); track label) { <span>{{ label }}</span> }</div>
+                  <div class="card-foot"><code>{{ item.key }}</code>
+                    <span class="card-meta">
+                      @if (item.dueDate) { <span [class.overdue]="item.dueDate < reportForm.controls.to.value && item.status !== 'Done'"><mat-icon>event</mat-icon>{{ item.dueDate | date: 'd MMM' }}</span> }
+                      @if (item.loggedMinutes) { <span><mat-icon>schedule</mat-icon>{{ formatMinutes(item.loggedMinutes) }}</span> }
+                      <span class="mini-avatar">{{ (item.assigneeName || 'U').slice(0, 1) }}</span>
+                    </span>
+                  </div>
+                </button>
+              } @empty {
+                <div class="column-empty">No items</div>
+              }
+            </div>
+          </section>
+        }
+      </div>
+    }
+
+    @if (activeTab() === 'list') {
+      <section class="app-card table-card">
+        <div class="table-toolbar work-filterbar">
+          <div class="search-field"><mat-icon>search</mat-icon>
+            <input [value]="search()" (input)="search.set($any($event.target).value)" (keydown.enter)="loadItems()" placeholder="Search key or summary" />
+          </div>
+          <select [value]="statusFilter()" (change)="statusFilter.set($any($event.target).value); loadItems()">
+            <option value="">All statuses</option>@for (status of statuses; track status) { <option [value]="status">{{ statusLabel(status) }}</option> }
+          </select>
+          <select [value]="priorityFilter()" (change)="priorityFilter.set($any($event.target).value); loadItems()">
+            <option value="">All priorities</option>@for (priority of priorities; track priority) { <option>{{ priority }}</option> }
+          </select>
+          <button mat-stroked-button (click)="loadItems()"><mat-icon>filter_list</mat-icon>Apply</button>
+          <span class="result-count">{{ items().total }} items</span>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table work-table">
+            <thead><tr><th>Key</th><th>Summary</th><th>Status</th><th>Priority</th><th>Assignee</th><th>Due date</th><th>Logged</th><th></th></tr></thead>
+            <tbody>
+              @for (item of items().items; track item.id) {
+                <tr (click)="openItem(item.id)">
+                  <td><code>{{ item.key }}</code></td>
+                  <td><div class="summary-cell"><span class="type-badge" [attr.data-type]="item.type">{{ item.type }}</span><b>{{ item.summary }}</b></div></td>
+                  <td><span [class]="'work-status ' + item.status.toLowerCase()">{{ statusLabel(item.status) }}</span></td>
+                  <td><span class="priority-cell"><mat-icon>{{ priorityIcon(item.priority) }}</mat-icon>{{ item.priority }}</span></td>
+                  <td>{{ item.assigneeName || 'Unassigned' }}</td><td>{{ item.dueDate ? (item.dueDate | date: 'd MMM yyyy') : '—' }}</td>
+                  <td>{{ formatMinutes(item.loggedMinutes) }}</td>
+                  <td><button mat-icon-button (click)="$event.stopPropagation()" [matMenuTriggerFor]="transitionMenu" aria-label="Item actions"><mat-icon>more_horiz</mat-icon></button>
+                    <mat-menu #transitionMenu="matMenu">
+                      <button mat-menu-item (click)="openItem(item.id)"><mat-icon>open_in_new</mat-icon>Open item</button>
+                      @for (next of transitionOptions(item.status); track next) {
+                        <button mat-menu-item (click)="transition(item, next)"><mat-icon>arrow_forward</mat-icon>Move to {{ statusLabel(next) }}</button>
+                      }
+                    </mat-menu>
+                  </td>
+                </tr>
+              } @empty { <tr><td colspan="8"><div class="inline-empty">No work matches these filters.</div></td></tr> }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+
+    @if (activeTab() === 'report') {
+      <section class="report-panel">
+        <div class="report-head">
+          <div><h2>Time by ticket and day</h2><p>Each row is a work item; each date shows the time logged that day.</p></div>
+          <div class="preset-buttons"><button type="button" (click)="setReportPreset('week')">7 days</button><button type="button" (click)="setReportPreset('month')">This month</button><button type="button" (click)="setReportPreset('year')">This year</button></div>
+        </div>
+        <form class="report-filters" [formGroup]="reportForm" (ngSubmit)="loadReport()">
+          <div class="field"><label>From</label><input type="date" formControlName="from" /></div>
+          <div class="field"><label>To</label><input type="date" formControlName="to" /></div>
+          <div class="field"><label>Project</label><select formControlName="projectId"><option value="">All accessible projects</option>@for (project of projects(); track project.id) { <option [value]="project.id">{{ project.key }} · {{ project.name }}</option> }</select></div>
+          <div class="field"><label>Employee</label><select formControlName="employeeId"><option value="">All permitted worklogs</option>@for (member of members(); track member.employeeId) { <option [value]="member.employeeId">{{ member.employeeName }}</option> }</select></div>
+          <button mat-raised-button class="primary-button" type="submit" [disabled]="reportLoading()">
+            @if (reportLoading()) { <mat-spinner diameter="16"></mat-spinner> } @else { <mat-icon>refresh</mat-icon> }
+            @if (!reportLoading()) { <span>Generate</span> }
+          </button>
+        </form>
+        @if (report(); as data) {
+          <div class="report-summary"><span>{{ data.rows.length }} tickets</span><strong>{{ formatMinutes(data.totalMinutes) }} logged</strong></div>
+          <div class="matrix-scroll">
+            <table class="time-matrix">
+              <thead><tr><th class="ticket-col">Ticket</th><th class="assignee-col">Assignee</th>@for (date of data.dates; track date) { <th>{{ date | date: 'd MMM' }}</th> }<th class="total-col">Total</th></tr></thead>
+              <tbody>
+                @for (row of data.rows; track row.workItemId) {
+                  <tr><td class="ticket-col"><button type="button" (click)="openItem(row.workItemId)"><code>{{ row.key }}</code><span>{{ row.summary }}</span></button></td>
+                    <td class="assignee-col">{{ row.assigneeName || 'Unassigned' }}</td>
+                    @for (date of data.dates; track date) { <td [class.has-time]="row.minutesByDate[date]">{{ row.minutesByDate[date] ? formatMinutes(row.minutesByDate[date]) : '—' }}</td> }
+                    <td class="total-col"><strong>{{ formatMinutes(row.totalMinutes) }}</strong></td>
+                  </tr>
+                } @empty { <tr><td [attr.colspan]="data.dates.length + 3"><div class="inline-empty">No time was logged in this range.</div></td></tr> }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+    }
+
+    @if (activeTab() === 'projects' && canManage()) {
+      <section class="access-panel">
+        <div class="access-head"><div><h2>Project access</h2><p>Control what each employee can do inside {{ selectedProject()?.name }}.</p></div>
+          <div class="add-member"><select [value]="newMemberId()" (change)="newMemberId.set($any($event.target).value)"><option value="">Choose employee</option>@for (employee of employees(); track employee.id) { <option [value]="employee.id">{{ employee.fullName }} · {{ employee.employeeNumber }}</option> }</select><button mat-stroked-button (click)="addMember()"><mat-icon>person_add</mat-icon>Add</button></div>
+        </div>
+        <div class="table-scroll"><table class="access-table"><thead><tr><th>Employee</th><th>Create</th><th>Assign</th><th>Transition</th><th>Log time</th><th>View all logs</th><th></th></tr></thead>
+          <tbody>@for (member of memberDraft(); track member.employeeId) {
+            <tr><td><b>{{ member.employeeName }}</b><small>{{ member.employeeNumber }}</small></td>
+              <td><input type="checkbox" [checked]="member.canCreateItems" (change)="updateMember(member.employeeId, 'canCreateItems', $any($event.target).checked)" /></td>
+              <td><input type="checkbox" [checked]="member.canAssignItems" (change)="updateMember(member.employeeId, 'canAssignItems', $any($event.target).checked)" /></td>
+              <td><input type="checkbox" [checked]="member.canTransitionItems" (change)="updateMember(member.employeeId, 'canTransitionItems', $any($event.target).checked)" /></td>
+              <td><input type="checkbox" [checked]="member.canLogWork" (change)="updateMember(member.employeeId, 'canLogWork', $any($event.target).checked)" /></td>
+              <td><input type="checkbox" [checked]="member.canViewAllWorklogs" (change)="updateMember(member.employeeId, 'canViewAllWorklogs', $any($event.target).checked)" /></td>
+              <td><button mat-icon-button (click)="removeMember(member.employeeId)" aria-label="Remove member"><mat-icon>delete</mat-icon></button></td>
+            </tr>
+          } @empty { <tr><td colspan="7"><div class="inline-empty">No employees have access to this project.</div></td></tr> }</tbody>
+        </table></div>
+        <div class="access-actions"><span>Role access is assigned in Access & roles. Project access is configured here.</span><button mat-raised-button class="primary-button" (click)="saveMembers()" [disabled]="saving()">@if (saving()) { <mat-spinner diameter="16"></mat-spinner> } @else { Save access }</button></div>
+      </section>
+    }
+  }
+</div>
+
+@if (drawerOpen()) {
+  <div class="drawer-overlay" (click)="drawerOpen.set(false)"></div>
+  <aside class="form-drawer work-form-drawer" aria-label="Work item form">
+    <div class="drawer-head"><div><small>{{ editing() ? editing()!.key : 'New work item' }}</small><h2>{{ editing() ? 'Edit work item' : 'Create work item' }}</h2></div><button mat-icon-button (click)="drawerOpen.set(false)"><mat-icon>close</mat-icon></button></div>
+    <form class="drawer-body" [formGroup]="itemForm" id="item-form" (ngSubmit)="submitItem()">
+      <div class="form-grid">
+        <div class="field wide"><label>Summary</label><input formControlName="summary" placeholder="What needs to be done?" /></div>
+        <div class="field"><label>Type</label><select formControlName="type">@for (type of types; track type) { <option>{{ type }}</option> }</select></div>
+        <div class="field"><label>Priority</label><select formControlName="priority">@for (priority of priorities; track priority) { <option>{{ priority }}</option> }</select></div>
+        <div class="field"><label>Assignee</label><select formControlName="assigneeEmployeeId" [disabled]="!canAssign()"><option value="">Unassigned</option>@for (member of members(); track member.employeeId) { <option [value]="member.employeeId">{{ member.employeeName }}</option> }</select></div>
+        <div class="field"><label>Due date</label><input type="date" formControlName="dueDate" /></div>
+        <div class="field"><label>Original estimate (minutes)</label><input type="number" min="0" formControlName="originalEstimateMinutes" /></div>
+        @if (editing()) { <div class="field"><label>Remaining estimate (minutes)</label><input type="number" min="0" formControlName="remainingEstimateMinutes" /></div> }
+        <div class="field"><label>Story points</label><input type="number" min="0" step="0.5" formControlName="storyPoints" /></div>
+        <div class="field wide"><label>Labels</label><input formControlName="labels" placeholder="frontend, payroll, urgent" /></div>
+        <div class="field wide"><label>Description</label><textarea formControlName="description" placeholder="Add context, acceptance criteria or implementation notes"></textarea></div>
+      </div>
+    </form>
+    @if (canAttach()) {
+      <div class="drawer-document-panel">
+        <app-document #itemDocuments ownerType="WorkItem" [ownerId]="editing()?.id ?? ''" category="reference"
+          label="Reference documents" />
+      </div>
+    }
+    <div class="drawer-actions"><button mat-stroked-button (click)="drawerOpen.set(false)">Cancel</button><button mat-raised-button class="primary-button" form="item-form" [disabled]="saving()">@if (saving()) { <mat-spinner diameter="16"></mat-spinner> } @else { {{ editing() ? 'Save changes' : 'Create item' }} }</button></div>
+  </aside>
+}
+
+@if (detailOpen()) {
+  <div class="drawer-overlay" (click)="detailOpen.set(false)"></div>
+  <aside class="form-drawer detail-drawer" aria-label="Work item details">
+    @if (detailLoading()) { <div class="drawer-progress" role="progressbar" aria-label="Loading ticket"><span></span></div> }
+    @if (detail(); as data) {
+      <div class="drawer-head"><div><small>{{ data.item.projectKey }} · {{ data.item.type }}</small><h2>{{ data.item.key }}</h2></div><button mat-icon-button (click)="detailOpen.set(false)"><mat-icon>close</mat-icon></button></div>
+      <div class="drawer-body detail-body">
+        <div class="detail-title"><h3>{{ data.item.summary }}</h3><button mat-stroked-button (click)="openEdit()"><mat-icon>edit</mat-icon>Edit</button></div>
+        <div class="detail-actions">
+          <button mat-stroked-button [matMenuTriggerFor]="statusMenu" [disabled]="!!actionBusy()">@if (actionBusy() === 'transition') { <mat-spinner diameter="16"></mat-spinner> } @else { <span [class]="'work-status ' + data.item.status.toLowerCase()">{{ statusLabel(data.item.status) }}</span> } @if (actionBusy() !== 'transition') { <mat-icon>expand_more</mat-icon> }</button>
+          <mat-menu #statusMenu="matMenu">@for (next of transitionOptions(data.item.status); track next) { <button mat-menu-item (click)="transition(data.item, next)">{{ statusLabel(next) }}</button> }</mat-menu>
+          @if (canAssign()) { <select [value]="data.item.assigneeEmployeeId || ''" (change)="assign($any($event.target).value)" [disabled]="!!actionBusy()"><option value="">Unassigned</option>@for (member of members(); track member.employeeId) { <option [value]="member.employeeId">{{ member.employeeName }}</option> }</select> }
+        </div>
+        <div class="detail-description"><h4>Description</h4><p>{{ data.description || 'No description provided.' }}</p></div>
+        <dl class="detail-grid"><div><dt>Priority</dt><dd><mat-icon>{{ priorityIcon(data.item.priority) }}</mat-icon>{{ data.item.priority }}</dd></div><div><dt>Reporter</dt><dd>{{ data.item.reporterName || 'Administrator' }}</dd></div><div><dt>Due date</dt><dd>{{ data.item.dueDate ? (data.item.dueDate | date: 'd MMM yyyy') : 'Not set' }}</dd></div><div><dt>Time tracking</dt><dd>{{ formatMinutes(data.item.loggedMinutes) }} / {{ formatMinutes(data.item.originalEstimateMinutes) }}</dd></div></dl>
+        <section class="activity-section documents-section">
+          <app-document ownerType="WorkItem" [ownerId]="data.item.id" category="reference"
+            label="Reference documents" [readonly]="!canAttach()" />
+        </section>
+        <section class="activity-section">
+          <div class="activity-section-head">
+            <h4>Comments <span>{{ data.comments.length }}</span></h4>
+            @if (canComment()) { <button mat-stroked-button type="button" (click)="openCommentDialog()"><mat-icon>add_comment</mat-icon>Add comment</button> }
+          </div>
+          @for (comment of data.comments; track comment.id) { <article class="activity-entry"><span class="activity-avatar">{{ comment.authorName.slice(0, 1) }}</span><div><header><b>{{ comment.authorName }}</b><time>{{ comment.createdAt | date: 'd MMM, HH:mm' }}</time>@if (comment.canEdit) { <button mat-icon-button (click)="deleteComment(comment.id)" [disabled]="!!actionBusy()" aria-label="Delete comment">@if (actionBusy() === 'comment-' + comment.id) { <mat-spinner diameter="16"></mat-spinner> } @else { <mat-icon>delete</mat-icon> }</button> }</header><p>{{ comment.body }}</p></div></article> }
+        </section>
+        @if (canLog()) {
+          <section class="activity-section">
+            <div class="activity-section-head">
+              <h4>Worklog <span>{{ data.worklogs.length }}</span></h4>
+              <button mat-stroked-button type="button" (click)="openWorklogDialog()"><mat-icon>timer</mat-icon>Log time</button>
+            </div>
+            @for (log of data.worklogs; track log.id) { <article class="worklog-entry"><div><b>{{ log.employeeName }}</b><span>{{ log.workDate | date: 'd MMM yyyy' }} · {{ log.description || 'Work logged' }}</span></div><strong>{{ formatMinutes(log.minutes) }}</strong>@if (log.canEdit) { <button mat-icon-button (click)="deleteWorklog(log.id)" [disabled]="!!actionBusy()" aria-label="Delete worklog">@if (actionBusy() === 'worklog-' + log.id) { <mat-spinner diameter="16"></mat-spinner> } @else { <mat-icon>delete</mat-icon> }</button> }</article> }
+          </section>
+        }
+        <section class="activity-section"><h4>History</h4>@for (event of data.history; track event.id) { <div class="history-entry"><mat-icon>history</mat-icon><p><b>{{ event.actorName }}</b> {{ event.eventType.replace('_', ' ') }}@if (event.fieldName) { <span> {{ event.fieldName }} from <code>{{ event.beforeValue || 'none' }}</code> to <code>{{ event.afterValue || 'none' }}</code></span> }<time>{{ event.createdAt | date: 'd MMM, HH:mm' }}</time></p></div> }</section>
+      </div>
+    } @else {
+      <div class="detail-skeleton" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    }
+  </aside>
+}
+
+@if (commentDialogOpen()) {
+  <div class="work-modal-overlay" (click)="commentDialogOpen.set(false)"></div>
+  <section class="work-modal" role="dialog" aria-modal="true" aria-label="Add comment">
+    <header><div><small>{{ detail()?.item?.key }}</small><h2>Add comment</h2></div><button mat-icon-button type="button" (click)="commentDialogOpen.set(false)" aria-label="Close comment dialog"><mat-icon>close</mat-icon></button></header>
+    <form class="work-modal-body" [formGroup]="commentForm" id="comment-dialog-form" (ngSubmit)="addComment()">
+      <div class="field"><label>Comment</label><textarea formControlName="body" placeholder="Add a comment"></textarea></div>
+    </form>
+    <footer><button mat-stroked-button type="button" (click)="commentDialogOpen.set(false)">Cancel</button><button mat-raised-button class="primary-button" form="comment-dialog-form" [disabled]="commentForm.invalid || !!actionBusy()">@if (actionBusy() === 'comment') { <mat-spinner diameter="16"></mat-spinner> } @else { Comment }</button></footer>
+  </section>
+}
+
+@if (worklogDialogOpen()) {
+  <div class="work-modal-overlay" (click)="worklogDialogOpen.set(false)"></div>
+  <section class="work-modal" role="dialog" aria-modal="true" aria-label="Log work">
+    <header><div><small>{{ detail()?.item?.key }}</small><h2>Log time</h2></div><button mat-icon-button type="button" (click)="worklogDialogOpen.set(false)" aria-label="Close worklog dialog"><mat-icon>close</mat-icon></button></header>
+    <form class="work-modal-body worklog-dialog-form" [formGroup]="worklogForm" id="worklog-dialog-form" (ngSubmit)="addWorklog()">
+      <div class="field"><label>Work date</label><input type="date" formControlName="workDate" /></div>
+      <div class="field"><label>Hours</label><input type="number" step="0.25" min="0.02" max="24" formControlName="hours" /></div>
+      <div class="field"><label>Remaining estimate (minutes)</label><input type="number" min="0" formControlName="remainingEstimateMinutes" /></div>
+      <div class="field wide"><label>Work note</label><textarea formControlName="description" placeholder="What did you work on?"></textarea></div>
+    </form>
+    <footer><button mat-stroked-button type="button" (click)="worklogDialogOpen.set(false)">Cancel</button><button mat-raised-button class="primary-button" form="worklog-dialog-form" [disabled]="worklogForm.invalid || !!actionBusy()">@if (actionBusy() === 'worklog') { <mat-spinner diameter="16"></mat-spinner> } @else { Log time }</button></footer>
+  </section>
+}
+
+@if (projectDrawerOpen()) {
+  <div class="drawer-overlay" (click)="projectDrawerOpen.set(false)"></div>
+  <aside class="form-drawer"><div class="drawer-head"><div><small>Work configuration</small><h2>Create project</h2></div><button mat-icon-button (click)="projectDrawerOpen.set(false)"><mat-icon>close</mat-icon></button></div>
+    <form class="drawer-body" [formGroup]="projectForm" id="project-form" (ngSubmit)="createProject()"><div class="form-grid"><div class="field"><label>Project key</label><input formControlName="key" placeholder="ENG" maxlength="10" /></div><div class="field"><label>Project name</label><input formControlName="name" placeholder="Engineering delivery" /></div><div class="field wide"><label>Project lead</label><select formControlName="leadEmployeeId"><option value="">No lead</option>@for (employee of employees(); track employee.id) { <option [value]="employee.id">{{ employee.fullName }}</option> }</select></div><div class="field wide"><label>Description</label><textarea formControlName="description"></textarea></div></div></form>
+    <div class="drawer-actions"><button mat-stroked-button (click)="projectDrawerOpen.set(false)">Cancel</button><button mat-raised-button class="primary-button" form="project-form" [disabled]="saving()">@if (saving()) { <mat-spinner diameter="16"></mat-spinner> } @else { Create project }</button></div>
+  </aside>
+}

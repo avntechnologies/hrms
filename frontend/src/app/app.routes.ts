@@ -49,6 +49,12 @@ export const routes: Routes = [
         title: 'Employees · PeopleFlow',
       },
       {
+        path: 'work',
+        canActivate: [permissionGuard('work.read')],
+        loadComponent: () => import('./features/work/work.page').then((m) => m.WorkPage),
+        title: 'Work management · PeopleFlow',
+      },
+      {
         path: 'companies',
         canActivate: [permissionGuard('platform.manage')],
         data: { module: 'platform' },
