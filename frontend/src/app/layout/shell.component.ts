@@ -59,7 +59,6 @@ export class ShellComponent implements OnDestroy {
   readonly collapsed = signal(false);
   readonly companyLogoUrl = signal<string | null>(null);
   readonly profilePhotoUrl = signal<string | null>(null);
-  private readonly notificationTimer: ReturnType<typeof setInterval>;
   private readonly companyLogoEffect = effect(() => this.loadImage(this.company.profile()?.logoDocumentId, this.companyLogoUrl));
   readonly initials = computed(() =>
     (this.auth.user()?.displayName ?? 'HR')
@@ -183,11 +182,11 @@ export class ShellComponent implements OnDestroy {
       next: (items) => this.loadImage(items[0]?.id, this.profilePhotoUrl), error: () => undefined,
     });
     this.refreshNotifications();
-    this.notificationTimer = setInterval(() => this.refreshNotifications(), 30000);
+    this.notifications.connect();
   }
 
   ngOnDestroy(): void {
-    clearInterval(this.notificationTimer);
+    this.notifications.disconnect();
     this.revoke(this.companyLogoUrl());
     this.revoke(this.profilePhotoUrl());
   }
@@ -221,6 +220,23 @@ export class ShellComponent implements OnDestroy {
 
   markAllNotificationsRead(): void {
     this.notifications.markAllRead().subscribe({ error: () => undefined });
+  }
+
+  notificationIcon(kind: string): string {
+    return ({
+      work: 'task_alt',
+      leave: 'event_available',
+      timesheet: 'schedule',
+      expense: 'receipt_long',
+      payroll: 'payments',
+      asset: 'laptop_mac',
+      training: 'school',
+      performance: 'monitoring',
+      recruitment: 'person_search',
+      document: 'verified',
+      announcement: 'campaign',
+      security: 'security',
+    } as Record<string, string>)[kind] ?? 'notifications';
   }
 
   private refreshNotifications(): void {

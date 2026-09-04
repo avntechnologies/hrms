@@ -17,7 +17,9 @@ public interface INotificationService
     Task MarkReadAsync(Guid id, CancellationToken ct);
     Task MarkAllReadAsync(CancellationToken ct);
     Task QueueForEmployeesAsync(IEnumerable<Guid?> employeeIds, string title, string message, string kind, string? link, CancellationToken ct);
+    Task QueueForUsersAsync(IEnumerable<Guid> userIds, string title, string message, string kind, string? link, CancellationToken ct);
     Task QueueForPermissionAsync(string permission, string title, string message, string kind, string? link, CancellationToken ct);
+    Task QueueForAllUsersAsync(string title, string message, string kind, string? link, CancellationToken ct);
 }
 
 public sealed class NotificationService(
@@ -70,6 +72,19 @@ public sealed class NotificationService(
             }, ct);
     }
 
+    public async Task QueueForUsersAsync(IEnumerable<Guid> userIds, string title, string message, string kind, string? link, CancellationToken ct)
+    {
+        var ids = userIds.Distinct().Where(x => x != user.UserId).ToArray();
+        if (ids.Length == 0) return;
+        var recipients = await users.ListAsync(x => ids.Contains(x.Id) && x.IsActive, cancellationToken: ct);
+        foreach (var recipientId in recipients.Select(x => x.Id))
+            await notifications.AddAsync(new UserNotification
+            {
+                TenantId = TenantId, UserId = recipientId, Title = title.Trim(), Message = message.Trim(),
+                Kind = string.IsNullOrWhiteSpace(kind) ? "info" : kind.Trim().ToLowerInvariant(), Link = link
+            }, ct);
+    }
+
     public async Task QueueForPermissionAsync(string permission, string title, string message, string kind, string? link, CancellationToken ct)
     {
         var matchingRoles = (await roles.ListAsync(cancellationToken: ct))
@@ -82,6 +97,17 @@ public sealed class NotificationService(
             .Select(x => x.UserId).Distinct().ToArray();
         if (recipientUserIds.Length == 0) return;
         var recipients = await users.ListAsync(x => recipientUserIds.Contains(x.Id) && x.IsActive, cancellationToken: ct);
+        foreach (var recipientId in recipients.Select(x => x.Id).Distinct().Where(x => x != user.UserId))
+            await notifications.AddAsync(new UserNotification
+            {
+                TenantId = TenantId, UserId = recipientId, Title = title.Trim(), Message = message.Trim(),
+                Kind = string.IsNullOrWhiteSpace(kind) ? "info" : kind.Trim().ToLowerInvariant(), Link = link
+            }, ct);
+    }
+
+    public async Task QueueForAllUsersAsync(string title, string message, string kind, string? link, CancellationToken ct)
+    {
+        var recipients = await users.ListAsync(x => x.IsActive, cancellationToken: ct);
         foreach (var recipientId in recipients.Select(x => x.Id).Distinct().Where(x => x != user.UserId))
             await notifications.AddAsync(new UserNotification
             {

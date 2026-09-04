@@ -136,11 +136,17 @@ public sealed class WorkManagementService(
     public async Task<IReadOnlyList<WorkProjectMemberDto>> SetMembersAsync(Guid projectId, IReadOnlyList<SetWorkProjectMemberRequest> requests, CancellationToken ct)
     {
         RequirePermission(Permissions.WorkManage);
-        await RequireProjectAsync(projectId, ct);
+        var project = await RequireProjectAsync(projectId, ct);
         if (requests.Select(x => x.EmployeeId).Distinct().Count() != requests.Count)
             throw new DomainException("Each employee can appear only once.");
         foreach (var request in requests) await RequireEmployeeAsync(request.EmployeeId, ct);
         var existing = await members.ListAsync(x => x.ProjectId == projectId, cancellationToken: ct);
+        var existingEmployeeIds = existing.Select(x => x.EmployeeId).ToHashSet();
+        var changedEmployeeIds = requests.Where(request => existing.FirstOrDefault(x => x.EmployeeId == request.EmployeeId) is { } row
+            && (row.CanCreateItems != request.CanCreateItems || row.CanAssignItems != request.CanAssignItems
+                || row.CanTransitionItems != request.CanTransitionItems || row.CanLogWork != request.CanLogWork
+                || row.CanViewAllWorklogs != request.CanViewAllWorklogs))
+            .Select(x => x.EmployeeId).ToArray();
         var requestedEmployeeIds = requests.Select(x => x.EmployeeId).ToHashSet();
         foreach (var row in existing.Where(x => !requestedEmployeeIds.Contains(x.EmployeeId))) members.Remove(row);
         var existingByEmployeeId = existing.ToDictionary(x => x.EmployeeId);
@@ -160,6 +166,10 @@ public sealed class WorkManagementService(
             row.CanLogWork = request.CanLogWork;
             row.CanViewAllWorklogs = request.CanViewAllWorklogs;
         }
+        await notifications.QueueForEmployeesAsync(requestedEmployeeIds.Where(x => !existingEmployeeIds.Contains(x)).Select(x => (Guid?)x),
+            "Project access granted", $"You were granted access to {project.Name}.", "work", "/work", ct);
+        await notifications.QueueForEmployeesAsync(changedEmployeeIds.Select(x => (Guid?)x),
+            "Project access updated", $"Your access permissions for {project.Name} were updated.", "work", "/work", ct);
         await unitOfWork.SaveChangesAsync(ct);
         return await ListMembersAsync(projectId, ct);
     }
@@ -227,7 +237,8 @@ public sealed class WorkManagementService(
         await items.AddAsync(item, ct);
         await SetAssigneesAsync(item, assigneeIds, ct);
         await AddHistoryAsync(item.Id, "created", null, null, item.Key, ct);
-        await NotifyAsync(item, "Ticket assigned", $"{item.Key} was assigned to you.", assigneeIds.Select(x => (Guid?)x), ct);
+        await NotifyAsync(item, "Work item created", $"{item.Key} was created and requires your attention.",
+            assigneeIds.Select(x => (Guid?)x).Append(item.ReporterEmployeeId), ct);
         await unitOfWork.SaveChangesAsync(ct);
         return (await MapItemsAsync([item], ct))[0];
     }
