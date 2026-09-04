@@ -437,6 +437,207 @@ app-work-page {
   font-weight: 750;
 }
 
+.mini-avatar-stack {
+  display: inline-flex;
+  align-items: center;
+}
+
+.mini-avatar-stack .mini-avatar + .mini-avatar {
+  margin-left: -7px;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.field-label-row {
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.assignee-selected-count {
+  color: var(--ink-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.assignee-checklist {
+  max-height: 190px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow-y: auto;
+}
+
+.assignee-checklist.disabled {
+  opacity: 0.58;
+  pointer-events: none;
+}
+
+.assignee-option {
+  min-height: 48px;
+  padding: 5px 10px 5px 4px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  cursor: pointer;
+  outline: 0;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.assignee-option:last-child {
+  border-bottom: 0;
+}
+
+.assignee-option:hover,
+.assignee-option:focus-visible {
+  background: var(--card-muted);
+}
+
+.assignee-option:focus-visible {
+  box-shadow: inset 0 0 0 2px rgb(var(--brand-rgb) / 0.22);
+}
+
+.assignee-option.selected {
+  background: rgb(var(--brand-rgb) / 0.045);
+}
+
+.assignee-option mat-checkbox {
+  flex: 0 0 auto;
+}
+
+.assignee-avatar {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 50%;
+  background: rgb(var(--brand-rgb) / 0.1);
+  color: var(--brand);
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.6875rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.assignee-option-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.assignee-option-copy b,
+.assignee-option-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignee-option-copy b {
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.assignee-option-copy small {
+  margin-top: 1px;
+  color: var(--ink-muted);
+  font-size: 0.6875rem;
+}
+
+.assignee-empty {
+  min-height: 52px;
+  padding: 10px 14px;
+  color: var(--ink-muted);
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.assignee-menu-trigger {
+  max-width: 240px;
+}
+
+.assignee-menu-trigger > span {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+::ng-deep .assignee-menu.mat-mdc-menu-panel {
+  width: min(360px, calc(100vw - 28px));
+  max-width: min(360px, calc(100vw - 28px));
+}
+
+::ng-deep .assignee-menu .mat-mdc-menu-content {
+  padding: 0;
+}
+
+.assignee-menu-panel {
+  width: 100%;
+  background: var(--card);
+}
+
+.assignee-menu-head {
+  min-height: 58px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.assignee-menu-head strong,
+.assignee-menu-head small {
+  display: block;
+}
+
+.assignee-menu-head strong {
+  color: var(--ink);
+  font-size: 0.8125rem;
+}
+
+.assignee-menu-head small {
+  margin-top: 2px;
+  color: var(--ink-muted);
+  font-size: 0.6875rem;
+}
+
+.assignee-menu-head > span {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--card-muted);
+  color: var(--ink-muted);
+  font-size: 0.6875rem;
+  font-weight: 650;
+}
+
+.assignee-menu-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.assignee-menu-actions {
+  min-height: 50px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.assignee-menu-actions button {
+  min-width: 74px;
+}
+
 .column-empty,
 .inline-empty {
   color: var(--ink-muted);

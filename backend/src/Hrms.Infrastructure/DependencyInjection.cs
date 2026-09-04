@@ -42,6 +42,17 @@ public static class DependencyInjection
                 ValidateLifetime = true, ClockSkew = TimeSpan.FromSeconds(30),
                 NameClaimType = ClaimTypes.Email, RoleClaimType = ClaimTypes.Role
             };
+            options.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    var accessToken = context.Request.Query["access_token"];
+                    if (!string.IsNullOrEmpty(accessToken)
+                        && context.HttpContext.Request.Path.StartsWithSegments("/hubs/notifications"))
+                        context.Token = accessToken;
+                    return Task.CompletedTask;
+                }
+            };
         });
         services.AddAuthorizationBuilder()
             .AddPolicy("PlatformAdmin", policy => policy.RequireClaim("platform_admin", "true"))

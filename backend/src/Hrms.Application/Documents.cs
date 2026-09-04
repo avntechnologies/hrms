@@ -38,11 +38,88 @@ public sealed class DocumentService(
 {
     public const long MaxFileSize = 15 * 1024 * 1024;
     private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".pdf",
-        ".doc", ".docx", ".xls", ".xlsx", ".csv", ".ppt", ".pptx", ".txt", ".rtf",
-        ".zip", ".7z", ".rar", ".mp3", ".wav", ".ogg", ".mp4", ".webm", ".mov", ".eml", ".msg"
-    };
+{
+    // Images
+    ".jpg",
+    ".jpeg",
+    ".jpe",
+    ".jpd",
+    ".jfif",
+    ".png",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".svg",
+    ".avif",
+    ".ico",
+    ".heic",
+    ".heif",
+    ".tif",
+    ".tiff",
+
+    // PDF
+    ".pdf",
+
+    // Word / documents
+    ".doc",
+    ".docx",
+    ".dotx",
+    ".rtf",
+    ".odt",
+
+    // Excel / spreadsheets
+    ".xls",
+    ".xlsx",
+    ".xlsm",
+    ".xlsb",
+    ".xltx",
+    ".csv",
+    ".ods",
+
+    // Presentations
+    ".ppt",
+    ".pptx",
+    ".odp",
+
+    // Text / source / configuration
+    ".txt",
+    ".json",
+    ".xml",
+    ".log",
+    ".md",
+    ".yml",
+    ".yaml",
+    ".ini",
+    ".sql",
+    ".js",
+    ".ts",
+    ".css",
+    ".html",
+    ".htm",
+    ".sh",
+    ".conf",
+
+    // Archives
+    ".zip",
+    ".7z",
+    ".rar",
+
+    // Audio
+    ".mp3",
+    ".wav",
+    ".ogg",
+    ".m4a",
+    ".aac",
+
+    // Video
+    ".mp4",
+    ".webm",
+    ".mov",
+
+    // Email
+    ".eml",
+    ".msg"
+};
 
     private Guid TenantId => currentTenant.TenantId ?? throw new UnauthorizedAccessException("Tenant identity is missing.");
 

@@ -1,6 +1,8 @@
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using Hrms.Api;
 using Hrms.Api.Middleware;
+using Hrms.Application;
 using Hrms.Infrastructure;
 using Hrms.Infrastructure.Persistence;
 using Microsoft.OpenApi;
@@ -33,6 +35,8 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 builder.Services.AddHealthChecks();
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<INotificationPublisher, SignalRNotificationPublisher>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddCors(options => options.AddPolicy("Frontend", policy =>
 {
@@ -72,6 +76,7 @@ if (swaggerEnabled)
 }
 app.MapHealthChecks("/health").AllowAnonymous();
 app.MapControllers();
+app.MapHub<NotificationsHub>("/hubs/notifications");
 
 if (app.Configuration.GetValue("Database:AutoMigrate", true))
 {

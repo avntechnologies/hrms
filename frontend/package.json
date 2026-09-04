@@ -25,12 +25,18 @@
     "@angular/material": "^22.0.5",
     "@angular/platform-browser": "22.0.7",
     "@angular/router": "22.0.7",
+    "@microsoft/signalr": "^10.0.11",
     "@tailwindcss/postcss": "^4.3.3",
+    "docx-preview": "^0.4.0",
+    "heic2any": "^0.0.4",
+    "jszip": "^3.10.1",
     "material-symbols": "^0.47.1",
     "postcss": "^8.5.19",
     "rxjs": "~7.8.0",
     "tailwindcss": "^4.3.3",
-    "tslib": "^2.3.0"
+    "tslib": "^2.3.0",
+    "utif": "^3.1.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@angular/build": "^22.0.7",

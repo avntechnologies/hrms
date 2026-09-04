@@ -239,6 +239,8 @@ export interface WorkItem {
   reporterName?: string;
   assigneeEmployeeId?: string;
   assigneeName?: string;
+  assigneeEmployeeIds: string[];
+  assigneeNames: string[];
   dueDate?: string;
   originalEstimateMinutes?: number;
   remainingEstimateMinutes?: number;

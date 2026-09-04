@@ -8,7 +8,8 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace Hrms.Infrastructure.Persistence;
 
-public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurrentTenant currentTenant, ICurrentUser currentUser)
+public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurrentTenant currentTenant, ICurrentUser currentUser,
+    INotificationPublisher notificationPublisher)
     : DbContext(options), IUnitOfWork
 {
     public Guid? CurrentTenantId => currentTenant.TenantId;
@@ -52,6 +53,7 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
     public DbSet<WorkProject> WorkProjects => Set<WorkProject>();
     public DbSet<WorkProjectMember> WorkProjectMembers => Set<WorkProjectMember>();
     public DbSet<WorkItem> WorkItems => Set<WorkItem>();
+    public DbSet<WorkItemAssignee> WorkItemAssignees => Set<WorkItemAssignee>();
     public DbSet<WorkItemComment> WorkItemComments => Set<WorkItemComment>();
     public DbSet<WorkLog> WorkLogs => Set<WorkLog>();
     public DbSet<WorkItemHistory> WorkItemHistories => Set<WorkItemHistory>();
@@ -89,10 +91,14 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
         modelBuilder.Entity<ExpenseClaim>().HasIndex(x => new { x.TenantId, x.ClaimNumber }).IsUnique();
         modelBuilder.Entity<TrainingEnrollment>().HasIndex(x => new { x.TenantId, x.CourseId, x.EmployeeId });
         modelBuilder.Entity<WorkProject>().HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
-        modelBuilder.Entity<WorkProjectMember>().HasIndex(x => new { x.TenantId, x.ProjectId, x.EmployeeId }).IsUnique();
+        modelBuilder.Entity<WorkProjectMember>().HasIndex(x => new { x.TenantId, x.ProjectId, x.EmployeeId })
+            .IsUnique().HasFilter("\"IsDeleted\" = false");
         modelBuilder.Entity<WorkItem>().HasIndex(x => new { x.TenantId, x.ProjectId, x.Number }).IsUnique();
         modelBuilder.Entity<WorkItem>().HasIndex(x => new { x.TenantId, x.Key }).IsUnique();
         modelBuilder.Entity<WorkItem>().HasIndex(x => new { x.TenantId, x.Status, x.AssigneeEmployeeId });
+        modelBuilder.Entity<WorkItemAssignee>().HasIndex(x => new { x.TenantId, x.WorkItemId, x.EmployeeId })
+            .IsUnique().HasFilter("\"IsDeleted\" = false");
+        modelBuilder.Entity<WorkItemAssignee>().HasIndex(x => new { x.TenantId, x.EmployeeId, x.WorkItemId });
         modelBuilder.Entity<WorkItemComment>().HasIndex(x => new { x.TenantId, x.WorkItemId, x.CreatedAt });
         modelBuilder.Entity<WorkLog>().HasIndex(x => new { x.TenantId, x.WorkItemId, x.WorkDate });
         modelBuilder.Entity<WorkLog>().HasIndex(x => new { x.TenantId, x.EmployeeId, x.WorkDate });
@@ -117,6 +123,9 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
+        var notificationUserIds = ChangeTracker.Entries<UserNotification>()
+            .Where(x => x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .Select(x => x.Entity.UserId).Distinct().ToArray();
         var changed = ChangeTracker.Entries<AuditableEntity>()
             .Where(x => x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
             .Where(x => x.Entity is not AuditLog)
@@ -160,7 +169,10 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
             });
         }
 
-        return await base.SaveChangesAsync(cancellationToken);
+        var result = await base.SaveChangesAsync(cancellationToken);
+        if (notificationUserIds.Length > 0)
+            await notificationPublisher.PublishChangedAsync(notificationUserIds, cancellationToken);
+        return result;
     }
 
     private static string Serialize(PropertyValues values) => JsonSerializer.Serialize(values.Properties.ToDictionary(p => p.Name, p => values[p]));

@@ -6,6 +6,11 @@ public sealed record NotificationDto(Guid Id, string Title, string Message, stri
     bool IsRead, DateTimeOffset CreatedAt);
 public sealed record NotificationFeedDto(IReadOnlyList<NotificationDto> Items, int UnreadCount);
 
+public interface INotificationPublisher
+{
+    Task PublishChangedAsync(IEnumerable<Guid> userIds, CancellationToken ct);
+}
+
 public interface INotificationService
 {
     Task<NotificationFeedDto> GetFeedAsync(int take, CancellationToken ct);

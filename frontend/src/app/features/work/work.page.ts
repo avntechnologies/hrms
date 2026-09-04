@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -31,6 +32,7 @@ type WorkTab = 'board' | 'list' | 'report' | 'projects';
     DatePipe,
     ReactiveFormsModule,
     MatButtonModule,
+    MatCheckboxModule,
     MatIconModule,
     MatMenuModule,
     MatProgressSpinnerModule,
@@ -86,6 +88,7 @@ export class WorkPage implements OnInit {
   readonly error = signal('');
   readonly success = signal('');
   readonly newMemberId = signal('');
+  readonly detailAssigneeDraft = signal<string[]>([]);
 
   readonly selectedProject = computed(() =>
     this.projects().find((project) => project.id === this.selectedProjectId()),
@@ -105,6 +108,8 @@ export class WorkPage implements OnInit {
     summary: ['', [Validators.required, Validators.maxLength(240)]],
     description: [''],
     assigneeEmployeeId: [''],
+    assigneeEmployeeIds: [[] as string[]],
+    reporterEmployeeId: [''],
     parentId: [''],
     priority: ['Medium', Validators.required],
     dueDate: [''],
@@ -217,7 +222,7 @@ export class WorkPage implements OnInit {
     this.editing.set(null);
     this.itemForm.reset({
       projectId: this.selectedProjectId(), type: 'Task', summary: '', description: '',
-      assigneeEmployeeId: '', parentId: '', priority: 'Medium', dueDate: '',
+      assigneeEmployeeId: '', assigneeEmployeeIds: [], reporterEmployeeId: this.auth.user()?.employeeId ?? '', parentId: '', priority: 'Medium', dueDate: '',
       originalEstimateMinutes: 0, remainingEstimateMinutes: 0, storyPoints: 0, labels: '', version: 0,
     });
     this.drawerOpen.set(true);
@@ -231,6 +236,8 @@ export class WorkPage implements OnInit {
     this.itemForm.reset({
       projectId: item.projectId, type: item.type, summary: item.summary,
       description: detail.description ?? '', assigneeEmployeeId: item.assigneeEmployeeId ?? '',
+      assigneeEmployeeIds: item.assigneeEmployeeIds?.length ? item.assigneeEmployeeIds : (item.assigneeEmployeeId ? [item.assigneeEmployeeId] : []),
+      reporterEmployeeId: item.reporterEmployeeId ?? '',
       parentId: item.parentId ?? '', priority: item.priority, dueDate: item.dueDate ?? '',
       originalEstimateMinutes: item.originalEstimateMinutes ?? 0,
       remainingEstimateMinutes: item.remainingEstimateMinutes ?? 0,
@@ -246,10 +253,12 @@ export class WorkPage implements OnInit {
     }
     this.saving.set(true);
     const raw = this.itemForm.getRawValue();
+    const assigneeEmployeeIds = raw.assigneeEmployeeIds.filter(Boolean);
     const optionalNumber = (value: number) => (value > 0 ? Number(value) : null);
     const payload = {
       projectId: raw.projectId, type: raw.type, summary: raw.summary, description: raw.description || null,
-      assigneeEmployeeId: raw.assigneeEmployeeId || null, parentId: raw.parentId || null,
+      assigneeEmployeeId: assigneeEmployeeIds[0] || null, assigneeEmployeeIds, reporterEmployeeId: raw.reporterEmployeeId || null,
+      parentId: raw.parentId || null,
       priority: raw.priority, dueDate: raw.dueDate || null,
       originalEstimateMinutes: optionalNumber(raw.originalEstimateMinutes),
       remainingEstimateMinutes: optionalNumber(raw.remainingEstimateMinutes),
@@ -312,15 +321,71 @@ export class WorkPage implements OnInit {
     return transitions[status] ?? [];
   }
 
-  assign(employeeId: string): void {
+  assign(employeeIds: string[]): void {
     const item = this.detail()?.item;
     if (!item) return;
+
+    const ids = Array.from(new Set(employeeIds.filter(Boolean)));
+
     this.runAction('assign', this.api.put<WorkItem>(`/work/items/${item.id}/assignee`, {
-      assigneeEmployeeId: employeeId || null, version: item.version,
+      assigneeEmployeeId: ids[0] || null,
+      assigneeEmployeeIds: ids,
+      version: item.version,
     }), (updated) => {
       this.applyItem(updated);
+      this.detailAssigneeDraft.set(this.detailAssigneeIds(updated));
       this.refreshDetail(updated.id);
     }, 'Unable to assign the work item.');
+  }
+
+  isFormAssigneeSelected(employeeId: string): boolean {
+    return this.itemForm.controls.assigneeEmployeeIds.value.includes(employeeId);
+  }
+
+  toggleFormAssignee(employeeId: string, checked: boolean): void {
+    if (!this.canAssign()) return;
+
+    const control = this.itemForm.controls.assigneeEmployeeIds;
+    const current = control.value;
+
+    const next = checked
+      ? Array.from(new Set([...current, employeeId]))
+      : current.filter((id) => id !== employeeId);
+
+    control.setValue(next);
+    control.markAsDirty();
+    control.markAsTouched();
+  }
+
+  detailAssigneeIds(item: WorkItem): string[] {
+    if (item.assigneeEmployeeIds?.length) {
+      return [...item.assigneeEmployeeIds];
+    }
+
+    return item.assigneeEmployeeId
+      ? [item.assigneeEmployeeId]
+      : [];
+  }
+
+  beginDetailAssigneeEdit(item: WorkItem): void {
+    this.detailAssigneeDraft.set(this.detailAssigneeIds(item));
+  }
+
+  isDetailAssigneeSelected(employeeId: string): boolean {
+    return this.detailAssigneeDraft().includes(employeeId);
+  }
+
+  toggleDetailAssigneeDraft(employeeId: string, checked: boolean): void {
+    this.detailAssigneeDraft.update((current) =>
+      checked
+        ? Array.from(new Set([...current, employeeId]))
+        : current.filter((id) => id !== employeeId),
+    );
+  }
+
+  applyDetailAssignees(): void {
+    if (this.actionBusy()) return;
+    this.assign(this.detailAssigneeDraft());
   }
 
   openCommentDialog(): void {
@@ -475,6 +540,27 @@ export class WorkPage implements OnInit {
 
   statusLabel(status: string): string {
     return ({ ToDo: 'To do', InProgress: 'In progress', InReview: 'In review' } as Record<string, string>)[status] ?? status;
+  }
+
+  assigneeLabel(item: WorkItem): string {
+    const names = item.assigneeNames?.length ? item.assigneeNames : (item.assigneeName ? [item.assigneeName] : []);
+    return names.length ? names.join(', ') : 'Unassigned';
+  }
+
+  assigneeInitials(item: WorkItem): string[] {
+    const names = item.assigneeNames?.length ? item.assigneeNames : (item.assigneeName ? [item.assigneeName] : []);
+    return names.slice(0, 3).map((name) => name.slice(0, 1));
+  }
+
+  assigneeButtonLabel(item: WorkItem): string {
+    const names = item.assigneeNames?.length
+      ? item.assigneeNames
+      : (item.assigneeName ? [item.assigneeName] : []);
+
+    if (!names.length) return 'Unassigned';
+    if (names.length === 1) return names[0];
+
+    return `${names.length} assignees`;
   }
 
   priorityIcon(priority: string): string {

@@ -11,13 +11,16 @@ public sealed record SetWorkProjectMemberRequest(Guid EmployeeId, bool CanCreate
 public sealed record WorkProjectMemberDto(Guid Id, Guid EmployeeId, string EmployeeNumber, string EmployeeName, bool CanCreateItems, bool CanAssignItems, bool CanTransitionItems, bool CanLogWork, bool CanViewAllWorklogs);
 
 public sealed record CreateWorkItemRequest(Guid ProjectId, WorkItemType Type, string Summary, string? Description, Guid? AssigneeEmployeeId,
-    Guid? ParentId, WorkItemPriority Priority, DateOnly? DueDate, int? OriginalEstimateMinutes, decimal? StoryPoints, IReadOnlyList<string>? Labels);
+    IReadOnlyList<Guid>? AssigneeEmployeeIds, Guid? ReporterEmployeeId, Guid? ParentId, WorkItemPriority Priority, DateOnly? DueDate,
+    int? OriginalEstimateMinutes, decimal? StoryPoints, IReadOnlyList<string>? Labels);
 public sealed record UpdateWorkItemRequest(WorkItemType Type, string Summary, string? Description, WorkItemPriority Priority, DateOnly? DueDate,
-    int? OriginalEstimateMinutes, int? RemainingEstimateMinutes, decimal? StoryPoints, IReadOnlyList<string>? Labels, long Version);
-public sealed record AssignWorkItemRequest(Guid? AssigneeEmployeeId, long Version);
+    int? OriginalEstimateMinutes, int? RemainingEstimateMinutes, decimal? StoryPoints, IReadOnlyList<string>? Labels,
+    Guid? AssigneeEmployeeId, IReadOnlyList<Guid>? AssigneeEmployeeIds, Guid? ReporterEmployeeId, long Version);
+public sealed record AssignWorkItemRequest(Guid? AssigneeEmployeeId, IReadOnlyList<Guid>? AssigneeEmployeeIds, long Version);
 public sealed record TransitionWorkItemRequest(WorkItemStatus Status, WorkItemResolution? Resolution, string? Comment, long Version);
 public sealed record WorkItemDto(Guid Id, Guid ProjectId, string ProjectKey, string Key, Guid? ParentId, WorkItemType Type, string Summary,
     WorkItemStatus Status, WorkItemPriority Priority, Guid? ReporterEmployeeId, string? ReporterName, Guid? AssigneeEmployeeId, string? AssigneeName,
+    IReadOnlyList<Guid> AssigneeEmployeeIds, IReadOnlyList<string> AssigneeNames,
     DateOnly? DueDate, int? OriginalEstimateMinutes, int? RemainingEstimateMinutes, int LoggedMinutes, decimal? StoryPoints,
     IReadOnlyList<string> Labels, WorkItemResolution? Resolution, DateTimeOffset? ResolvedAt, DateTimeOffset CreatedAt, long Version);
 public sealed record WorkItemDetailDto(WorkItemDto Item, string? Description, IReadOnlyList<WorkCommentDto> Comments,
@@ -73,7 +76,7 @@ public static class WorkWorkflow
 
 public sealed class WorkManagementService(
     IRepository<WorkProject> projects, IRepository<WorkProjectMember> members, IRepository<WorkItem> items,
-    IRepository<WorkItemComment> comments, IRepository<WorkLog> worklogs, IRepository<WorkItemHistory> history,
+    IRepository<WorkItemAssignee> assignees, IRepository<WorkItemComment> comments, IRepository<WorkLog> worklogs, IRepository<WorkItemHistory> history,
     IRepository<Employee> employees, ICurrentTenant tenant, ICurrentUser user, IUnitOfWork unitOfWork,
     INotificationService notifications) : ServiceBase(tenant), IWorkManagementService
 {
@@ -138,15 +141,25 @@ public sealed class WorkManagementService(
             throw new DomainException("Each employee can appear only once.");
         foreach (var request in requests) await RequireEmployeeAsync(request.EmployeeId, ct);
         var existing = await members.ListAsync(x => x.ProjectId == projectId, cancellationToken: ct);
-        foreach (var row in existing) members.Remove(row);
+        var requestedEmployeeIds = requests.Select(x => x.EmployeeId).ToHashSet();
+        foreach (var row in existing.Where(x => !requestedEmployeeIds.Contains(x.EmployeeId))) members.Remove(row);
+        var existingByEmployeeId = existing.ToDictionary(x => x.EmployeeId);
         foreach (var request in requests)
-            await members.AddAsync(new WorkProjectMember
+        {
+            if (!existingByEmployeeId.TryGetValue(request.EmployeeId, out var row))
             {
-                TenantId = TenantId, ProjectId = projectId, EmployeeId = request.EmployeeId,
-                CanCreateItems = request.CanCreateItems, CanAssignItems = request.CanAssignItems,
-                CanTransitionItems = request.CanTransitionItems, CanLogWork = request.CanLogWork,
-                CanViewAllWorklogs = request.CanViewAllWorklogs
-            }, ct);
+                row = new WorkProjectMember
+                {
+                    TenantId = TenantId, ProjectId = projectId, EmployeeId = request.EmployeeId
+                };
+                await members.AddAsync(row, ct);
+            }
+            row.CanCreateItems = request.CanCreateItems;
+            row.CanAssignItems = request.CanAssignItems;
+            row.CanTransitionItems = request.CanTransitionItems;
+            row.CanLogWork = request.CanLogWork;
+            row.CanViewAllWorklogs = request.CanViewAllWorklogs;
+        }
         await unitOfWork.SaveChangesAsync(ct);
         return await ListMembersAsync(projectId, ct);
     }
@@ -155,11 +168,14 @@ public sealed class WorkManagementService(
     {
         var allowed = await AllowedProjectIdsAsync(ct);
         var query = page.Search?.Trim().ToLowerInvariant();
+        var assignedItemIds = assigneeEmployeeId.HasValue
+            ? (await assignees.ListAsync(x => x.EmployeeId == assigneeEmployeeId.Value, cancellationToken: ct)).Select(x => x.WorkItemId).ToHashSet()
+            : [];
         Expression<Func<WorkItem, bool>> predicate = x => allowed.Contains(x.ProjectId)
             && (!projectId.HasValue || x.ProjectId == projectId.Value)
             && (!status.HasValue || x.Status == status.Value)
             && (!priority.HasValue || x.Priority == priority.Value)
-            && (!assigneeEmployeeId.HasValue || x.AssigneeEmployeeId == assigneeEmployeeId.Value)
+            && (!assigneeEmployeeId.HasValue || x.AssigneeEmployeeId == assigneeEmployeeId.Value || assignedItemIds.Contains(x.Id))
             && (string.IsNullOrEmpty(query) || x.Key.ToLower().Contains(query) || x.Summary.ToLower().Contains(query));
         var total = await items.CountAsync(predicate, ct);
         var rows = await items.ListAsync(predicate, x => x.OrderByDescending(i => i.CreatedAt), page.Skip, page.SafePageSize, ct);
@@ -186,8 +202,11 @@ public sealed class WorkManagementService(
         var project = await RequireProjectAsync(request.ProjectId, ct);
         if (!project.IsActive) throw new DomainException("This project is inactive.");
         Required(request.Summary, "Summary");
-        if (request.AssigneeEmployeeId.HasValue)
-            await RequireAssignableAsync(request.ProjectId, request.AssigneeEmployeeId.Value, access, ct);
+        var assigneeIds = NormalizeAssigneeIds(request.AssigneeEmployeeId, request.AssigneeEmployeeIds);
+        foreach (var assigneeId in assigneeIds)
+            await RequireAssignableAsync(request.ProjectId, assigneeId, access, ct);
+        var reporterId = request.ReporterEmployeeId;
+        if (reporterId.HasValue) await RequireEmployeeAsync(reporterId.Value, ct);
         if (request.ParentId.HasValue)
         {
             var parent = await RequireItemAsync(request.ParentId.Value, ct);
@@ -200,14 +219,15 @@ public sealed class WorkManagementService(
         {
             TenantId = TenantId, ProjectId = project.Id, Number = number, Key = $"{project.Key}-{number}",
             ParentId = request.ParentId, Type = request.Type, Summary = request.Summary.Trim(),
-            Description = Clean(request.Description), Priority = request.Priority, ReporterEmployeeId = user.EmployeeId,
-            AssigneeEmployeeId = request.AssigneeEmployeeId, DueDate = request.DueDate,
+            Description = Clean(request.Description), Priority = request.Priority, ReporterEmployeeId = reporterId,
+            AssigneeEmployeeId = assigneeIds.Count > 0 ? assigneeIds[0] : null, DueDate = request.DueDate,
             OriginalEstimateMinutes = request.OriginalEstimateMinutes, RemainingEstimateMinutes = request.OriginalEstimateMinutes,
             StoryPoints = request.StoryPoints, LabelsCsv = NormalizeLabels(request.Labels)
         };
         await items.AddAsync(item, ct);
+        await SetAssigneesAsync(item, assigneeIds, ct);
         await AddHistoryAsync(item.Id, "created", null, null, item.Key, ct);
-        await NotifyAsync(item, "Ticket assigned", $"{item.Key} was assigned to you.", [item.AssigneeEmployeeId], ct);
+        await NotifyAsync(item, "Ticket assigned", $"{item.Key} was assigned to you.", assigneeIds.Select(x => (Guid?)x), ct);
         await unitOfWork.SaveChangesAsync(ct);
         return (await MapItemsAsync([item], ct))[0];
     }
@@ -219,18 +239,35 @@ public sealed class WorkManagementService(
         CheckVersion(item, request.Version);
         Required(request.Summary, "Summary");
         ValidateEstimate(request.OriginalEstimateMinutes, request.StoryPoints);
+        var currentAssigneeIds = await CurrentAssigneeIdsAsync(item, ct);
+        var assigneeIds = request.AssigneeEmployeeIds is null && !request.AssigneeEmployeeId.HasValue
+            ? currentAssigneeIds
+            : NormalizeAssigneeIds(request.AssigneeEmployeeId, request.AssigneeEmployeeIds);
+        var reporterId = request.ReporterEmployeeId;
+        var assigneesChanged = !currentAssigneeIds.SequenceEqual(assigneeIds);
+        if (assigneesChanged)
+        {
+            var assignAccess = await RequireProjectAccessAsync(item.ProjectId, AccessKind.Assign, ct);
+            foreach (var assigneeId in assigneeIds)
+                await RequireAssignableAsync(item.ProjectId, assigneeId, assignAccess, ct);
+        }
+        if (reporterId.HasValue && reporterId != item.ReporterEmployeeId)
+            await RequireEmployeeAsync(reporterId.Value, ct);
         var before = item.Summary;
         item.Type = request.Type;
         item.Summary = request.Summary.Trim();
         item.Description = Clean(request.Description);
         item.Priority = request.Priority;
+        item.ReporterEmployeeId = reporterId;
+        item.AssigneeEmployeeId = assigneeIds.Count > 0 ? assigneeIds[0] : null;
         item.DueDate = request.DueDate;
         item.OriginalEstimateMinutes = request.OriginalEstimateMinutes;
         item.RemainingEstimateMinutes = request.RemainingEstimateMinutes;
         item.StoryPoints = request.StoryPoints;
         item.LabelsCsv = NormalizeLabels(request.Labels);
+        await SetAssigneesAsync(item, assigneeIds, ct);
         await AddHistoryAsync(id, "updated", "details", before, item.Summary, ct);
-        await NotifyAsync(item, "Ticket updated", $"{item.Key} details were updated.", [item.AssigneeEmployeeId, item.ReporterEmployeeId], ct);
+        await NotifyAsync(item, "Ticket updated", $"{item.Key} details were updated.", assigneeIds.Select(x => (Guid?)x).Append(item.ReporterEmployeeId), ct);
         await unitOfWork.SaveChangesAsync(ct);
         return (await MapItemsAsync([item], ct))[0];
     }
@@ -240,12 +277,14 @@ public sealed class WorkManagementService(
         var item = await RequireItemAsync(id, ct);
         var access = await RequireProjectAccessAsync(item.ProjectId, AccessKind.Assign, ct);
         CheckVersion(item, request.Version);
-        if (request.AssigneeEmployeeId.HasValue)
-            await RequireAssignableAsync(item.ProjectId, request.AssigneeEmployeeId.Value, access, ct);
-        var before = item.AssigneeEmployeeId?.ToString();
-        item.AssigneeEmployeeId = request.AssigneeEmployeeId;
-        await AddHistoryAsync(id, "assigned", "assignee", before, item.AssigneeEmployeeId?.ToString(), ct);
-        await NotifyAsync(item, "Ticket assigned", $"{item.Key} was assigned to you.", [item.AssigneeEmployeeId], ct);
+        var assigneeIds = NormalizeAssigneeIds(request.AssigneeEmployeeId, request.AssigneeEmployeeIds);
+        foreach (var assigneeId in assigneeIds)
+            await RequireAssignableAsync(item.ProjectId, assigneeId, access, ct);
+        var before = string.Join(',', (await CurrentAssigneeIdsAsync(item, ct)).Select(x => x.ToString()));
+        item.AssigneeEmployeeId = assigneeIds.Count > 0 ? assigneeIds[0] : null;
+        await SetAssigneesAsync(item, assigneeIds, ct);
+        await AddHistoryAsync(id, "assigned", "assignee", before, string.Join(',', assigneeIds), ct);
+        await NotifyAsync(item, "Ticket assigned", $"{item.Key} was assigned to you.", assigneeIds.Select(x => (Guid?)x), ct);
         await unitOfWork.SaveChangesAsync(ct);
         return (await MapItemsAsync([item], ct))[0];
     }
@@ -273,7 +312,7 @@ public sealed class WorkManagementService(
         await AddHistoryAsync(id, "transitioned", "status", before.ToString(), request.Status.ToString(), ct);
         if (!string.IsNullOrWhiteSpace(request.Comment)) await AddCommentInternalAsync(id, request.Comment, ct);
         await NotifyAsync(item, "Ticket status changed", $"{item.Key} moved from {before} to {request.Status}.",
-            [item.AssigneeEmployeeId, item.ReporterEmployeeId], ct);
+            (await CurrentAssigneeIdsAsync(item, ct)).Select(x => (Guid?)x).Append(item.ReporterEmployeeId), ct);
         await unitOfWork.SaveChangesAsync(ct);
         return (await MapItemsAsync([item], ct))[0];
     }
@@ -284,7 +323,7 @@ public sealed class WorkManagementService(
         await RequireProjectAccessAsync(item.ProjectId, AccessKind.Comment, ct);
         var row = await AddCommentInternalAsync(itemId, request.Body, ct);
         await NotifyAsync(item, "New ticket comment", $"A comment was added to {item.Key}.",
-            [item.AssigneeEmployeeId, item.ReporterEmployeeId], ct);
+            (await CurrentAssigneeIdsAsync(item, ct)).Select(x => (Guid?)x).Append(item.ReporterEmployeeId), ct);
         await unitOfWork.SaveChangesAsync(ct);
         return (await MapCommentsAsync([row], ct))[0];
     }
@@ -405,11 +444,17 @@ public sealed class WorkManagementService(
                 date => itemLogs.Where(x => x.WorkDate.ToString("yyyy-MM-dd") == date).Sum(x => x.Minutes));
             return new WorkTimeReportRow(item.Id, item.Key, item.Summary, null, cells, itemLogs.Sum(x => x.Minutes));
         }).ToArray();
+        var reportAssigneeMap = (await assignees.ListAsync(x => itemIds.Contains(x.WorkItemId), cancellationToken: ct))
+            .GroupBy(x => x.WorkItemId)
+            .ToDictionary(x => x.Key, x => x.Select(a => a.EmployeeId).Distinct().ToArray());
         var people = await EmployeeNamesAsync(ct);
         rows = rows.Select(row =>
         {
             var item = itemRows.First(x => x.Id == row.WorkItemId);
-            return row with { AssigneeName = Name(people, item.AssigneeEmployeeId) };
+            var ids = reportAssigneeMap.GetValueOrDefault(item.Id) ?? [];
+            if (item.AssigneeEmployeeId.HasValue && !ids.Contains(item.AssigneeEmployeeId.Value)) ids = [item.AssigneeEmployeeId.Value, .. ids];
+            var assigned = ids.Select(x => Name(people, x)).Where(x => !string.IsNullOrWhiteSpace(x));
+            return row with { AssigneeName = string.Join(", ", assigned.DefaultIfEmpty(Name(people, item.AssigneeEmployeeId) ?? "Unassigned")) };
         }).ToArray();
         return new WorkTimeReportDto(from, to, dates, rows, rows.Sum(x => x.TotalMinutes));
     }
@@ -518,6 +563,23 @@ public sealed class WorkManagementService(
         return row;
     }
 
+    private async Task<IReadOnlyList<Guid>> CurrentAssigneeIdsAsync(WorkItem item, CancellationToken ct)
+    {
+        var rows = await assignees.ListAsync(x => x.WorkItemId == item.Id, x => x.OrderBy(a => a.CreatedAt), cancellationToken: ct);
+        var ids = rows.Select(x => x.EmployeeId).ToList();
+        if (item.AssigneeEmployeeId.HasValue && !ids.Contains(item.AssigneeEmployeeId.Value)) ids.Insert(0, item.AssigneeEmployeeId.Value);
+        return ids.Distinct().ToArray();
+    }
+
+    private async Task SetAssigneesAsync(WorkItem item, IReadOnlyList<Guid> employeeIds, CancellationToken ct)
+    {
+        var existing = await assignees.ListAsync(x => x.WorkItemId == item.Id, cancellationToken: ct);
+        foreach (var row in existing.Where(x => !employeeIds.Contains(x.EmployeeId))) assignees.Remove(row);
+        var current = existing.Select(x => x.EmployeeId).ToHashSet();
+        foreach (var employeeId in employeeIds.Where(x => !current.Contains(x)))
+            await assignees.AddAsync(new WorkItemAssignee { TenantId = TenantId, WorkItemId = item.Id, EmployeeId = employeeId }, ct);
+    }
+
     private async Task AddHistoryAsync(Guid itemId, string eventType, string? field, string? before, string? after, CancellationToken ct) =>
         await history.AddAsync(new WorkItemHistory
         {
@@ -557,12 +619,22 @@ public sealed class WorkManagementService(
         var ids = rows.Select(x => x.Id).ToArray();
         var totals = (await worklogs.ListAsync(x => ids.Contains(x.WorkItemId), cancellationToken: ct))
             .GroupBy(x => x.WorkItemId).ToDictionary(x => x.Key, x => x.Sum(w => w.Minutes));
-        return rows.Select(x => new WorkItemDto(
-            x.Id, x.ProjectId, projectMap.GetValueOrDefault(x.ProjectId)?.Key ?? string.Empty, x.Key, x.ParentId,
-            x.Type, x.Summary, x.Status, x.Priority, x.ReporterEmployeeId, Name(people, x.ReporterEmployeeId),
-            x.AssigneeEmployeeId, Name(people, x.AssigneeEmployeeId), x.DueDate, x.OriginalEstimateMinutes,
-            x.RemainingEstimateMinutes, totals.GetValueOrDefault(x.Id), x.StoryPoints, SplitLabels(x.LabelsCsv),
-            x.Resolution, x.ResolvedAt, x.CreatedAt, x.Version)).ToArray();
+        var assigneeMap = (await assignees.ListAsync(x => ids.Contains(x.WorkItemId), cancellationToken: ct))
+            .GroupBy(x => x.WorkItemId)
+            .ToDictionary(x => x.Key, x => x.Select(a => a.EmployeeId).Distinct().ToArray());
+        return rows.Select(x =>
+        {
+            var assignedIds = assigneeMap.GetValueOrDefault(x.Id) ?? [];
+            if (x.AssigneeEmployeeId.HasValue && !assignedIds.Contains(x.AssigneeEmployeeId.Value))
+                assignedIds = [x.AssigneeEmployeeId.Value, .. assignedIds];
+            var assigneeNames = assignedIds.Select(id => Name(people, id)).Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name!).ToArray();
+            return new WorkItemDto(
+                x.Id, x.ProjectId, projectMap.GetValueOrDefault(x.ProjectId)?.Key ?? string.Empty, x.Key, x.ParentId,
+                x.Type, x.Summary, x.Status, x.Priority, x.ReporterEmployeeId, Name(people, x.ReporterEmployeeId),
+                x.AssigneeEmployeeId, Name(people, x.AssigneeEmployeeId), assignedIds, assigneeNames, x.DueDate, x.OriginalEstimateMinutes,
+                x.RemainingEstimateMinutes, totals.GetValueOrDefault(x.Id), x.StoryPoints, SplitLabels(x.LabelsCsv),
+                x.Resolution, x.ResolvedAt, x.CreatedAt, x.Version);
+        }).ToArray();
     }
 
     private async Task<IReadOnlyList<WorkCommentDto>> MapCommentsAsync(IReadOnlyList<WorkItemComment> rows, CancellationToken ct)
@@ -604,6 +676,9 @@ public sealed class WorkManagementService(
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static string NormalizeLabels(IReadOnlyList<string>? labels) =>
         string.Join(',', (labels ?? []).Select(x => x.Trim().ToLowerInvariant()).Where(x => x.Length > 0).Distinct().Take(20));
+    private static IReadOnlyList<Guid> NormalizeAssigneeIds(Guid? primaryAssigneeId, IReadOnlyList<Guid>? assigneeIds) =>
+        (assigneeIds is { Count: > 0 } ? assigneeIds : primaryAssigneeId.HasValue ? [primaryAssigneeId.Value] : [])
+        .Where(x => x != Guid.Empty).Distinct().Take(20).ToArray();
     private static IReadOnlyList<string> SplitLabels(string csv) =>
         csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     private static string? Name(IReadOnlyDictionary<Guid, string> people, Guid? id) =>

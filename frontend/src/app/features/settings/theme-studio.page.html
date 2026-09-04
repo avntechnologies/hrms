@@ -28,9 +28,29 @@
               </button>
             </div>
           </div>
-          <app-document ownerType="Tenant" [ownerId]="profile.id" category="logo" label="Company logo"
-            [replaceMode]="true" [maxFiles]="1" [allowedExtensions]="['jpg','jpeg','png','webp']"
-            (documentsChanged)="refreshCompanyBranding()" />
+          <app-document
+          ownerType="Tenant"
+          [ownerId]="profile.id"
+          category="logo"
+          label="Company logo"
+          [replaceMode]="true"
+          [maxFiles]="1"
+          [maxSizeMb]="5"
+          [showUploadButton]="false"
+          [compact]="true"
+          [allowedExtensions]="[
+            'jpg',
+            'jpeg',
+            'jpd',
+            'jfif',
+            'png',
+            'webp',
+            'avif',
+            'heic',
+            'heif'
+          ]"
+          (documentsChanged)="refreshCompanyBranding()"
+        />
         </div>
       </article>
     }

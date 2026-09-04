@@ -39,10 +39,54 @@ public sealed class TenantIsolationTests
         Assert.True(deleted.IsDeleted); Assert.NotNull(deleted.DeletedAt);
     }
 
-    private static HrmsDbContext CreateDb(CurrentTenant tenant)
+    [Fact]
+    public async Task Work_item_assignee_uniqueness_only_applies_to_active_links()
+    {
+        var tenant = new CurrentTenant(); tenant.Set(Guid.NewGuid());
+        await using var db = CreateDb(tenant);
+
+        var entity = db.Model.FindEntityType(typeof(WorkItemAssignee));
+        var index = entity!.GetIndexes().Single(x => x.IsUnique
+            && x.Properties.Select(p => p.Name).SequenceEqual(["TenantId", "WorkItemId", "EmployeeId"]));
+
+        Assert.Equal("\"IsDeleted\" = false", index.GetFilter());
+    }
+
+    [Fact]
+    public async Task Work_project_member_uniqueness_only_applies_to_active_memberships()
+    {
+        var tenant = new CurrentTenant(); tenant.Set(Guid.NewGuid());
+        await using var db = CreateDb(tenant);
+
+        var entity = db.Model.FindEntityType(typeof(WorkProjectMember));
+        var index = entity!.GetIndexes().Single(x => x.IsUnique
+            && x.Properties.Select(p => p.Name).SequenceEqual(["TenantId", "ProjectId", "EmployeeId"]));
+
+        Assert.Equal("\"IsDeleted\" = false", index.GetFilter());
+    }
+
+    [Fact]
+    public async Task Notification_changes_are_published_after_the_database_save()
+    {
+        var tenant = new CurrentTenant(); tenant.Set(Guid.NewGuid());
+        var publisher = new TestNotificationPublisher();
+        await using var db = CreateDb(tenant, publisher);
+        var recipientId = Guid.NewGuid();
+        db.UserNotifications.Add(new UserNotification
+        {
+            TenantId = tenant.TenantId!.Value, UserId = recipientId,
+            Title = "Test", Message = "Test notification", Kind = "test"
+        });
+
+        await db.SaveChangesAsync();
+
+        Assert.Contains(recipientId, publisher.PublishedUserIds);
+    }
+
+    private static HrmsDbContext CreateDb(CurrentTenant tenant, TestNotificationPublisher? publisher = null)
     {
         var options = new DbContextOptionsBuilder<HrmsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        return new HrmsDbContext(options, tenant, new TestCurrentUser());
+        return new HrmsDbContext(options, tenant, new TestCurrentUser(), publisher ?? new TestNotificationPublisher());
     }
     private static Employee Employee(Guid tenantId, string number) => new()
     {

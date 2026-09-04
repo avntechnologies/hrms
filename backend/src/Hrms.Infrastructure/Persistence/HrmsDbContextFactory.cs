@@ -13,6 +13,11 @@ public sealed class HrmsDbContextFactory : IDesignTimeDbContextFactory<HrmsDbCon
         var configuredConnection = Environment.GetEnvironmentVariable("ConnectionStrings__Hrms") ?? "Host=localhost;Port=5432;Database=hrms;Username=postgres;Password=postgres";
         var connection = PostgresConnectionString.Normalize(configuredConnection);
         var options = new DbContextOptionsBuilder<HrmsDbContext>().UseNpgsql(connection).Options;
-        return new HrmsDbContext(options, new CurrentTenant(), new CurrentUser(new HttpContextAccessor()));
+        return new HrmsDbContext(options, new CurrentTenant(), new CurrentUser(new HttpContextAccessor()), new NullNotificationPublisher());
+    }
+
+    private sealed class NullNotificationPublisher : INotificationPublisher
+    {
+        public Task PublishChangedAsync(IEnumerable<Guid> userIds, CancellationToken ct) => Task.CompletedTask;
     }
 }

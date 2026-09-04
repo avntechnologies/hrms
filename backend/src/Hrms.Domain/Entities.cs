@@ -455,6 +455,12 @@ public sealed class WorkItem : TenantEntity
     public DateTimeOffset? ResolvedAt { get; set; }
 }
 
+public sealed class WorkItemAssignee : TenantEntity
+{
+    public Guid WorkItemId { get; set; }
+    public Guid EmployeeId { get; set; }
+}
+
 public sealed class WorkItemComment : TenantEntity
 {
     public Guid WorkItemId { get; set; }

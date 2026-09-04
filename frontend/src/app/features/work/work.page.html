@@ -86,7 +86,10 @@
                     <span class="card-meta">
                       @if (item.dueDate) { <span [class.overdue]="item.dueDate < reportForm.controls.to.value && item.status !== 'Done'"><mat-icon>event</mat-icon>{{ item.dueDate | date: 'd MMM' }}</span> }
                       @if (item.loggedMinutes) { <span><mat-icon>schedule</mat-icon>{{ formatMinutes(item.loggedMinutes) }}</span> }
-                      <span class="mini-avatar">{{ (item.assigneeName || 'U').slice(0, 1) }}</span>
+                      <span class="mini-avatar-stack">
+                        @for (initial of assigneeInitials(item); track $index) { <span class="mini-avatar">{{ initial }}</span> }
+                        @if (!assigneeInitials(item).length) { <span class="mini-avatar">U</span> }
+                      </span>
                     </span>
                   </div>
                 </button>
@@ -124,7 +127,7 @@
                   <td><div class="summary-cell"><span class="type-badge" [attr.data-type]="item.type">{{ item.type }}</span><b>{{ item.summary }}</b></div></td>
                   <td><span [class]="'work-status ' + item.status.toLowerCase()">{{ statusLabel(item.status) }}</span></td>
                   <td><span class="priority-cell"><mat-icon>{{ priorityIcon(item.priority) }}</mat-icon>{{ item.priority }}</span></td>
-                  <td>{{ item.assigneeName || 'Unassigned' }}</td><td>{{ item.dueDate ? (item.dueDate | date: 'd MMM yyyy') : '—' }}</td>
+                  <td>{{ assigneeLabel(item) }}</td><td>{{ item.dueDate ? (item.dueDate | date: 'd MMM yyyy') : '—' }}</td>
                   <td>{{ formatMinutes(item.loggedMinutes) }}</td>
                   <td><button mat-icon-button (click)="$event.stopPropagation()" [matMenuTriggerFor]="transitionMenu" aria-label="Item actions"><mat-icon>more_horiz</mat-icon></button>
                     <mat-menu #transitionMenu="matMenu">
@@ -210,7 +213,47 @@
         <div class="field wide"><label>Summary</label><input formControlName="summary" placeholder="What needs to be done?" /></div>
         <div class="field"><label>Type</label><select formControlName="type">@for (type of types; track type) { <option>{{ type }}</option> }</select></div>
         <div class="field"><label>Priority</label><select formControlName="priority">@for (priority of priorities; track priority) { <option>{{ priority }}</option> }</select></div>
-        <div class="field"><label>Assignee</label><select formControlName="assigneeEmployeeId" [disabled]="!canAssign()"><option value="">Unassigned</option>@for (member of members(); track member.employeeId) { <option [value]="member.employeeId">{{ member.employeeName }}</option> }</select></div>
+        <div class="field wide assignee-field">
+          <div class="field-label-row">
+            <label>Assignees</label>
+            <span class="assignee-selected-count">
+              {{ itemForm.controls.assigneeEmployeeIds.value.length }} selected
+            </span>
+          </div>
+
+          <div class="assignee-checklist" [class.disabled]="!canAssign()">
+            @for (member of members(); track member.employeeId) {
+              <div
+                class="assignee-option"
+                [class.selected]="isFormAssigneeSelected(member.employeeId)"
+                role="option"
+                [attr.aria-selected]="isFormAssigneeSelected(member.employeeId)"
+                [attr.tabindex]="canAssign() ? 0 : -1"
+                (click)="canAssign() && toggleFormAssignee(member.employeeId, !isFormAssigneeSelected(member.employeeId))"
+                (keydown.enter)="canAssign() && toggleFormAssignee(member.employeeId, !isFormAssigneeSelected(member.employeeId))"
+              >
+                <mat-checkbox
+                  [checked]="isFormAssigneeSelected(member.employeeId)"
+                  [disabled]="!canAssign()"
+                  (click)="$event.stopPropagation()"
+                  (change)="toggleFormAssignee(member.employeeId, $event.checked)"
+                ></mat-checkbox>
+
+                <span class="assignee-avatar">
+                  {{ member.employeeName.slice(0, 1).toUpperCase() }}
+                </span>
+
+                <span class="assignee-option-copy">
+                  <b>{{ member.employeeName }}</b>
+                  <small>{{ member.employeeNumber }}</small>
+                </span>
+              </div>
+            } @empty {
+              <div class="assignee-empty">No project members available.</div>
+            }
+          </div>
+        </div>
+        <div class="field"><label>Reporter</label><select formControlName="reporterEmployeeId"><option value="">No reporter</option>@for (member of members(); track member.employeeId) { <option [value]="member.employeeId">{{ member.employeeName }}</option> }</select></div>
         <div class="field"><label>Due date</label><input type="date" formControlName="dueDate" /></div>
         <div class="field"><label>Original estimate (minutes)</label><input type="number" min="0" formControlName="originalEstimateMinutes" /></div>
         @if (editing()) { <div class="field"><label>Remaining estimate (minutes)</label><input type="number" min="0" formControlName="remainingEstimateMinutes" /></div> }
@@ -221,8 +264,15 @@
     </form>
     @if (canAttach()) {
       <div class="drawer-document-panel">
-        <app-document #itemDocuments ownerType="WorkItem" [ownerId]="editing()?.id ?? ''" category="reference"
-          label="Reference documents" />
+        <app-document
+        #itemDocuments
+        ownerType="WorkItem"
+        [ownerId]="editing()?.id ?? ''"
+        category="reference"
+        label="Reference documents"
+        [showUploadButton]="false"
+        [compact]="true"
+      />
       </div>
     }
     <div class="drawer-actions"><button mat-stroked-button (click)="drawerOpen.set(false)">Cancel</button><button mat-raised-button class="primary-button" form="item-form" [disabled]="saving()">@if (saving()) { <mat-spinner diameter="16"></mat-spinner> } @else { {{ editing() ? 'Save changes' : 'Create item' }} }</button></div>
@@ -238,15 +288,121 @@
       <div class="drawer-body detail-body">
         <div class="detail-title"><h3>{{ data.item.summary }}</h3><button mat-stroked-button (click)="openEdit()"><mat-icon>edit</mat-icon>Edit</button></div>
         <div class="detail-actions">
-          <button mat-stroked-button [matMenuTriggerFor]="statusMenu" [disabled]="!!actionBusy()">@if (actionBusy() === 'transition') { <mat-spinner diameter="16"></mat-spinner> } @else { <span [class]="'work-status ' + data.item.status.toLowerCase()">{{ statusLabel(data.item.status) }}</span> } @if (actionBusy() !== 'transition') { <mat-icon>expand_more</mat-icon> }</button>
-          <mat-menu #statusMenu="matMenu">@for (next of transitionOptions(data.item.status); track next) { <button mat-menu-item (click)="transition(data.item, next)">{{ statusLabel(next) }}</button> }</mat-menu>
-          @if (canAssign()) { <select [value]="data.item.assigneeEmployeeId || ''" (change)="assign($any($event.target).value)" [disabled]="!!actionBusy()"><option value="">Unassigned</option>@for (member of members(); track member.employeeId) { <option [value]="member.employeeId">{{ member.employeeName }}</option> }</select> }
+          <button mat-stroked-button [matMenuTriggerFor]="statusMenu" [disabled]="!!actionBusy()">
+            @if (actionBusy() === 'transition') {
+              <mat-spinner diameter="16"></mat-spinner>
+            } @else {
+              <span [class]="'work-status ' + data.item.status.toLowerCase()">
+                {{ statusLabel(data.item.status) }}
+              </span>
+              <mat-icon>expand_more</mat-icon>
+            }
+          </button>
+
+          <mat-menu #statusMenu="matMenu">
+            @for (next of transitionOptions(data.item.status); track next) {
+              <button mat-menu-item (click)="transition(data.item, next)">
+                {{ statusLabel(next) }}
+              </button>
+            }
+          </mat-menu>
+
+          @if (canAssign()) {
+            <button
+              mat-stroked-button
+              class="assignee-menu-trigger"
+              #assigneeTrigger="matMenuTrigger"
+              [matMenuTriggerFor]="assigneeMenu"
+              [disabled]="!!actionBusy()"
+              (menuOpened)="beginDetailAssigneeEdit(data.item)"
+            >
+              @if (actionBusy() === 'assign') {
+                <mat-spinner diameter="16"></mat-spinner>
+              } @else {
+                <mat-icon>group</mat-icon>
+              }
+
+              <span>{{ assigneeButtonLabel(data.item) }}</span>
+              <mat-icon>expand_more</mat-icon>
+            </button>
+
+            <mat-menu #assigneeMenu="matMenu" class="assignee-menu">
+              <div class="assignee-menu-panel" (click)="$event.stopPropagation()">
+                <div class="assignee-menu-head">
+                  <div>
+                    <strong>Assignees</strong>
+                    <small>Select one or more project members.</small>
+                  </div>
+                  <span>{{ detailAssigneeDraft().length }} selected</span>
+                </div>
+
+                <div class="assignee-menu-list">
+                  @for (member of members(); track member.employeeId) {
+                    <div
+                      class="assignee-option"
+                      [class.selected]="isDetailAssigneeSelected(member.employeeId)"
+                      role="option"
+                      [attr.aria-selected]="isDetailAssigneeSelected(member.employeeId)"
+                      tabindex="0"
+                      (click)="toggleDetailAssigneeDraft(member.employeeId, !isDetailAssigneeSelected(member.employeeId))"
+                      (keydown.enter)="toggleDetailAssigneeDraft(member.employeeId, !isDetailAssigneeSelected(member.employeeId))"
+                    >
+                      <mat-checkbox
+                        [checked]="isDetailAssigneeSelected(member.employeeId)"
+                        (click)="$event.stopPropagation()"
+                        (change)="toggleDetailAssigneeDraft(member.employeeId, $event.checked)"
+                      ></mat-checkbox>
+
+                      <span class="assignee-avatar">
+                        {{ member.employeeName.slice(0, 1).toUpperCase() }}
+                      </span>
+
+                      <span class="assignee-option-copy">
+                        <b>{{ member.employeeName }}</b>
+                        <small>{{ member.employeeNumber }}</small>
+                      </span>
+                    </div>
+                  } @empty {
+                    <div class="assignee-empty">No project members available.</div>
+                  }
+                </div>
+
+                <div class="assignee-menu-actions">
+                  <button
+                    mat-button
+                    type="button"
+                    (click)="detailAssigneeDraft.set([])"
+                    [disabled]="!detailAssigneeDraft().length"
+                  >
+                    Clear
+                  </button>
+
+                  <button
+                    mat-raised-button
+                    type="button"
+                    class="primary-button"
+                    [disabled]="!!actionBusy()"
+                    (click)="applyDetailAssignees(); assigneeTrigger.closeMenu()"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </mat-menu>
+          }
         </div>
         <div class="detail-description"><h4>Description</h4><p>{{ data.description || 'No description provided.' }}</p></div>
-        <dl class="detail-grid"><div><dt>Priority</dt><dd><mat-icon>{{ priorityIcon(data.item.priority) }}</mat-icon>{{ data.item.priority }}</dd></div><div><dt>Reporter</dt><dd>{{ data.item.reporterName || 'Administrator' }}</dd></div><div><dt>Due date</dt><dd>{{ data.item.dueDate ? (data.item.dueDate | date: 'd MMM yyyy') : 'Not set' }}</dd></div><div><dt>Time tracking</dt><dd>{{ formatMinutes(data.item.loggedMinutes) }} / {{ formatMinutes(data.item.originalEstimateMinutes) }}</dd></div></dl>
+        <dl class="detail-grid"><div><dt>Priority</dt><dd><mat-icon>{{ priorityIcon(data.item.priority) }}</mat-icon>{{ data.item.priority }}</dd></div><div><dt>Assignees</dt><dd>{{ assigneeLabel(data.item) }}</dd></div><div><dt>Reporter</dt><dd>{{ data.item.reporterName || 'Administrator' }}</dd></div><div><dt>Due date</dt><dd>{{ data.item.dueDate ? (data.item.dueDate | date: 'd MMM yyyy') : 'Not set' }}</dd></div><div><dt>Time tracking</dt><dd>{{ formatMinutes(data.item.loggedMinutes) }} / {{ formatMinutes(data.item.originalEstimateMinutes) }}</dd></div></dl>
         <section class="activity-section documents-section">
-          <app-document ownerType="WorkItem" [ownerId]="data.item.id" category="reference"
-            label="Reference documents" [readonly]="!canAttach()" />
+          <app-document
+          ownerType="WorkItem"
+          [ownerId]="data.item.id"
+          category="reference"
+          label="Reference documents"
+          [readonly]="!canAttach()"
+          [showUploadButton]="false"
+          [compact]="true"
+        />
         </section>
         <section class="activity-section">
           <div class="activity-section-head">
