@@ -27,6 +27,7 @@ public sealed class IdentityController(IIdentityAdminService service) : Controll
     [HttpPost("users")] public Task<UserAdminDto> CreateUser(CreateUserRequest request, CancellationToken ct) => service.CreateUserAsync(request, ct);
     [HttpPost("employees/{employeeId:guid}/account")] public Task<UserAdminDto> ProvisionEmployee(Guid employeeId, ProvisionEmployeeAccountRequest request, CancellationToken ct) => service.ProvisionEmployeeAsync(employeeId, request, ct);
     [HttpPut("users/{userId:guid}/roles")] public Task<UserAdminDto> SetRoles(Guid userId, SetUserRolesRequest request, CancellationToken ct) => service.SetRolesAsync(userId, request, ct);
+    [HttpPut("users/{userId:guid}/password")] public Task<UserAdminDto> ResetPassword(Guid userId, ResetUserPasswordRequest request, CancellationToken ct) => service.ResetPasswordAsync(userId, request, ct);
     [HttpGet("users")] public Task<PagedResult<UserAdminDto>> Users([FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] string? search = null, CancellationToken ct = default) => service.SearchUsersAsync(new(page, pageSize, search), ct);
 }
 

@@ -128,6 +128,11 @@
                         <mat-icon>person_add</mat-icon>Create login account
                       </button>
                     }
+                    @if (auth.hasPermission('identity.manage') && employee.userId) {
+                      <button mat-menu-item (click)="openPasswordReset(employee)">
+                        <mat-icon>password</mat-icon>Reset password
+                      </button>
+                    }
                     ><button mat-menu-item (click)="deleteEmployee(employee)" class="danger-action">
                       <mat-icon>delete</mat-icon>Delete employee
                     </button></mat-menu
@@ -347,6 +352,57 @@
           <mat-spinner diameter="18"></mat-spinner>
         } @else {
           Create employee login
+        }
+      </button>
+    </div>
+  </aside>
+}
+
+@if (passwordDrawerOpen() && passwordEmployee(); as employee) {
+  <div class="drawer-overlay" (click)="passwordDrawerOpen.set(false)"></div>
+  <aside class="form-drawer">
+    <div class="drawer-head">
+      <div>
+        <div class="eyebrow">Employee access</div>
+        <h2>Reset password for {{ employee.fullName }}</h2>
+      </div>
+      <button mat-icon-button (click)="passwordDrawerOpen.set(false)">
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
+    <form
+      class="drawer-body"
+      [formGroup]="passwordForm"
+      id="password-reset-form"
+      (ngSubmit)="resetPassword()"
+    >
+      @if (error()) {
+        <div class="error-banner">{{ error() }}</div>
+      }
+      <div class="account-intro">
+        <mat-icon>lock_reset</mat-icon>
+        <p>
+          Set a temporary password for <b>{{ employee.workEmail }}</b>. The employee can sign in
+          with this password and change it from self-service.
+        </p>
+      </div>
+      <div class="form-grid">
+        <div class="field wide">
+          <label>New temporary password *</label
+          ><input type="password" formControlName="password" autocomplete="new-password" /><small
+            class="field-help"
+            >Minimum 8 characters. Share it securely.</small
+          >
+        </div>
+      </div>
+    </form>
+    <div class="drawer-actions">
+      <button mat-stroked-button (click)="passwordDrawerOpen.set(false)">Cancel</button
+      ><button mat-raised-button class="primary-button" form="password-reset-form" [disabled]="saving()">
+        @if (saving()) {
+          <mat-spinner diameter="18"></mat-spinner>
+        } @else {
+          Reset password
         }
       </button>
     </div>

@@ -23,13 +23,6 @@
     </div>
   </div>
 
-  @if (success()) {
-    <div class="success-banner">
-      <mat-icon>check_circle</mat-icon><span>{{ success() }}</span
-      ><button mat-icon-button (click)="success.set('')"><mat-icon>close</mat-icon></button>
-    </div>
-  }
-
   @if (definition().views.length > 1) {
     <div class="workspace-tabs">
       @for (tab of definition().views; track tab.label; let i = $index) {

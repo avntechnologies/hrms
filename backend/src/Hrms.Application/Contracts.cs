@@ -30,6 +30,7 @@ public sealed record CreateUserRequest(string DisplayName, string Email, string 
 public sealed record ProvisionEmployeeAccountRequest(string Password, IReadOnlyList<Guid> RoleIds);
 public sealed record UserAdminDto(Guid Id, Guid? EmployeeId, string DisplayName, string Email, bool IsActive, IReadOnlyList<Guid> RoleIds, long Version);
 public sealed record SetUserRolesRequest(IReadOnlyList<Guid> RoleIds, long Version);
+public sealed record ResetUserPasswordRequest(string Password);
 
 public sealed record CreateEmployeeRequest(
     string EmployeeNumber, string FirstName, string LastName, string WorkEmail, DateOnly HireDate,

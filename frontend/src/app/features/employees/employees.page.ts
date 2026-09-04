@@ -54,9 +54,11 @@ export class EmployeesPage implements OnInit {
   readonly drawerOpen = signal(false);
   readonly detailOpen = signal(false);
   readonly accountDrawerOpen = signal(false);
+  readonly passwordDrawerOpen = signal(false);
   readonly editing = signal<Employee | null>(null);
   readonly selected = signal<Employee | null>(null);
   readonly accountEmployee = signal<Employee | null>(null);
+  readonly passwordEmployee = signal<Employee | null>(null);
   readonly error = signal('');
   readonly success = signal('');
   readonly search = signal('');
@@ -86,6 +88,9 @@ export class EmployeesPage implements OnInit {
   readonly accountForm = this.fb.nonNullable.group({
     password: ['', [Validators.required, Validators.minLength(8)]],
     roleIds: [[] as string[], Validators.required],
+  });
+  readonly passwordForm = this.fb.nonNullable.group({
+    password: ['', [Validators.required, Validators.minLength(8)]],
   });
 
   ngOnInit(): void {
@@ -169,6 +174,14 @@ export class EmployeesPage implements OnInit {
     this.accountDrawerOpen.set(true);
   }
 
+  openPasswordReset(employee: Employee): void {
+    if (!employee.userId) return;
+    this.passwordEmployee.set(employee);
+    this.passwordForm.reset({ password: '' });
+    this.error.set('');
+    this.passwordDrawerOpen.set(true);
+  }
+
   provisionAccount(): void {
     if (this.accountForm.invalid || !this.accountEmployee()) {
       this.accountForm.markAllAsTouched();
@@ -190,6 +203,28 @@ export class EmployeesPage implements OnInit {
         },
         error: (error: HttpErrorResponse) =>
           this.error.set(error.error?.detail ?? 'Unable to create the login account.'),
+      });
+  }
+
+  resetPassword(): void {
+    const employee = this.passwordEmployee();
+    if (this.passwordForm.invalid || !employee?.userId) {
+      this.passwordForm.markAllAsTouched();
+      return;
+    }
+    this.saving.set(true);
+    this.error.set('');
+    this.api
+      .put(`/identity/users/${employee.userId}/password`, this.passwordForm.getRawValue())
+      .pipe(finalize(() => this.saving.set(false)))
+      .subscribe({
+        next: () => {
+          this.passwordDrawerOpen.set(false);
+          this.success.set(`Password reset for ${employee.fullName}.`);
+          this.passwordForm.reset({ password: '' });
+        },
+        error: (error: HttpErrorResponse) =>
+          this.error.set(error.error?.detail ?? 'Unable to reset the password.'),
       });
   }
 

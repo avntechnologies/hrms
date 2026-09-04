@@ -14,6 +14,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ActivatedRoute } from '@angular/router';
 import { Subject, finalize, forkJoin, of, takeUntil } from 'rxjs';
 import { ApiService } from '../../core/api.service';
+import { ToastService } from '../../core/toast.service';
 import {
   ColumnDefinition,
   FormFieldDefinition,
@@ -44,6 +45,7 @@ type SelectOption = { label: string; value: string | number | boolean };
 })
 export class ModulePage implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
+  private readonly toast = inject(ToastService);
   private readonly route = inject(ActivatedRoute);
   private readonly fb = inject(UntypedFormBuilder);
   private readonly destroy$ = new Subject<void>();
@@ -347,12 +349,8 @@ export class ModulePage implements OnInit, OnDestroy {
           this.detailOpen.set(true);
           return;
         }
-        const result = this.asRow(response);
-        const reference =
-          result['id'] ?? (typeof result['result'] === 'string' ? result['result'] : null);
-        this.success.set(
-          `${action.label} completed successfully.${reference ? ` Reference: ${reference}` : ''}`,
-        );
+        this.success.set('');
+        this.toast.success(`${action.label} completed successfully.`);
         this.closeDrawer();
         this.load(this.page());
       },

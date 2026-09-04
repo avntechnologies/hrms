@@ -98,7 +98,7 @@
           </div>
           @for (item of notifications.feed().items; track item.id) {
             <button mat-menu-item class="notification-item" [class.unread]="!item.isRead" (click)="openNotification(item)">
-              <span class="notification-icon"><mat-icon>{{ item.kind === 'work' ? 'task_alt' : 'notifications' }}</mat-icon></span>
+              <span class="notification-icon"><mat-icon>{{ item.kind === 'work' ? 'task_alt' : item.kind === 'leave' ? 'event_available' : 'notifications' }}</mat-icon></span>
               <span class="notification-copy"><strong>{{ item.title }}</strong><span>{{ item.message }}</span><small>{{ item.createdAt | date:'medium' }}</small></span>
             </button>
           } @empty {

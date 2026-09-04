@@ -23,6 +23,7 @@ public interface IIdentityAdminService
     Task<UserAdminDto> CreateUserAsync(CreateUserRequest request, CancellationToken cancellationToken);
     Task<UserAdminDto> ProvisionEmployeeAsync(Guid employeeId, ProvisionEmployeeAccountRequest request, CancellationToken cancellationToken);
     Task<UserAdminDto> SetRolesAsync(Guid userId, SetUserRolesRequest request, CancellationToken cancellationToken);
+    Task<UserAdminDto> ResetPasswordAsync(Guid userId, ResetUserPasswordRequest request, CancellationToken cancellationToken);
     Task<PagedResult<UserAdminDto>> SearchUsersAsync(PagedRequest request, CancellationToken cancellationToken);
 }
 
@@ -322,7 +323,7 @@ public sealed class AuthService(
     }
 }
 
-public sealed class IdentityAdminService(IRepository<UserAccount> users, IRepository<Role> roles, IRepository<UserRole> userRoles, IRepository<Employee> employees, IPasswordHasher passwordHasher, ICurrentTenant tenant, IUnitOfWork unitOfWork) : ServiceBase(tenant), IIdentityAdminService
+public sealed class IdentityAdminService(IRepository<UserAccount> users, IRepository<Role> roles, IRepository<UserRole> userRoles, IRepository<Employee> employees, IRepository<RefreshToken> refreshTokens, IPasswordHasher passwordHasher, ICurrentTenant tenant, IUnitOfWork unitOfWork) : ServiceBase(tenant), IIdentityAdminService
 {
     public async Task<RoleDto> CreateRoleAsync(CreateRoleRequest r, CancellationToken ct)
     {
@@ -358,6 +359,19 @@ public sealed class IdentityAdminService(IRepository<UserAccount> users, IReposi
         var old = await userRoles.ListAsync(x => x.UserId == userId, cancellationToken: ct); foreach (var link in old) userRoles.Remove(link);
         foreach (var roleId in r.RoleIds.Distinct()) await userRoles.AddAsync(new UserRole { TenantId = TenantId, UserId = userId, RoleId = roleId }, ct);
         user.UpdatedAt = DateTimeOffset.UtcNow; await unitOfWork.SaveChangesAsync(ct); return Map(user, r.RoleIds);
+    }
+    public async Task<UserAdminDto> ResetPasswordAsync(Guid userId, ResetUserPasswordRequest r, CancellationToken ct)
+    {
+        if (r.Password.Length < 8) throw new DomainException("Password must be at least 8 characters.");
+        var user = await users.GetByIdAsync(userId, ct) ?? throw new KeyNotFoundException("User not found.");
+        user.PasswordHash = passwordHasher.Hash(r.Password);
+        user.FailedLoginCount = 0;
+        user.LockedUntil = null;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        foreach (var token in await refreshTokens.ListAsync(x => x.UserId == userId && x.RevokedAt == null, cancellationToken: ct)) token.RevokedAt = DateTimeOffset.UtcNow;
+        await unitOfWork.SaveChangesAsync(ct);
+        var roleIds = (await userRoles.ListAsync(x => x.UserId == userId, cancellationToken: ct)).Select(x => x.RoleId).ToArray();
+        return Map(user, roleIds, (await employees.FirstOrDefaultAsync(x => x.UserId == user.Id, ct))?.Id);
     }
     public async Task<PagedResult<UserAdminDto>> SearchUsersAsync(PagedRequest r, CancellationToken ct)
     {
@@ -427,21 +441,25 @@ public sealed class OrganizationService(IRepository<Department> departments, IRe
     private static LocationDto Map(Location x) => new(x.Id, x.Name, x.Code, x.Address, x.City, x.CountryCode, x.IsActive);
 }
 
-public sealed class LeaveService(IRepository<LeaveType> types, IRepository<LeaveBalance> balances, IRepository<LeaveRequest> requests, IRepository<Employee> employees, ICurrentTenant tenant, ICurrentUser user, IUnitOfWork unitOfWork) : ServiceBase(tenant), ILeaveService
+public sealed class LeaveService(IRepository<LeaveType> types, IRepository<LeaveBalance> balances, IRepository<LeaveRequest> requests, IRepository<Employee> employees, ICurrentTenant tenant, ICurrentUser user, IUnitOfWork unitOfWork, INotificationService notifications) : ServiceBase(tenant), ILeaveService
 {
     public async Task<LeaveTypeDto> CreateTypeAsync(CreateLeaveTypeRequest r, CancellationToken ct) { if (await types.AnyAsync(x => x.Code == r.Code.ToUpper(), ct)) throw new DomainException("Leave type code already exists."); var x = new LeaveType { TenantId = TenantId, Name = r.Name.Trim(), Code = r.Code.Trim().ToUpperInvariant(), AnnualAllowance = r.AnnualAllowance, IsPaid = r.IsPaid, RequiresDocument = r.RequiresDocument, MaxConsecutiveDays = r.MaxConsecutiveDays }; await types.AddAsync(x, ct); await unitOfWork.SaveChangesAsync(ct); return Map(x); }
     public async Task<IReadOnlyList<LeaveTypeDto>> ListTypesAsync(CancellationToken ct) => (await types.ListAsync(x => x.IsActive, q => q.OrderBy(x => x.Name), cancellationToken: ct)).Select(Map).ToArray();
     public async Task<LeaveRequestDto> SubmitAsync(SubmitLeaveRequest r, CancellationToken ct)
     {
         if (r.EndsOn < r.StartsOn || r.Days <= 0) throw new DomainException("Leave dates or day count are invalid.");
-        _ = await employees.GetByIdAsync(r.EmployeeId, ct) ?? throw new KeyNotFoundException("Employee not found.");
+        var employee = await employees.GetByIdAsync(r.EmployeeId, ct) ?? throw new KeyNotFoundException("Employee not found.");
         var type = await types.GetByIdAsync(r.LeaveTypeId, ct) ?? throw new KeyNotFoundException("Leave type not found.");
         if (type.MaxConsecutiveDays > 0 && r.Days > type.MaxConsecutiveDays) throw new DomainException("Requested leave exceeds the maximum consecutive days.");
         if (await requests.AnyAsync(x => x.EmployeeId == r.EmployeeId && x.Status != LeaveRequestStatus.Rejected && x.Status != LeaveRequestStatus.Cancelled && x.StartsOn <= r.EndsOn && x.EndsOn >= r.StartsOn, ct)) throw new DomainException("The leave request overlaps an existing request.");
         var balance = await GetOrCreateBalance(r.EmployeeId, type, r.StartsOn.Year, ct);
         if (balance.Available < r.Days) throw new DomainException("Insufficient leave balance.");
         var x = new LeaveRequest { TenantId = TenantId, EmployeeId = r.EmployeeId, LeaveTypeId = r.LeaveTypeId, StartsOn = r.StartsOn, EndsOn = r.EndsOn, Days = r.Days, Reason = r.Reason.Trim() };
-        balance.Pending += r.Days; await requests.AddAsync(x, ct); await unitOfWork.SaveChangesAsync(ct); return Map(x);
+        balance.Pending += r.Days; await requests.AddAsync(x, ct);
+        await notifications.QueueForPermissionAsync(Permissions.LeaveManage, "Leave request submitted",
+            $"{employee.FullName} requested {r.Days:0.##} day(s) of {type.Name} from {r.StartsOn:dd MMM yyyy} to {r.EndsOn:dd MMM yyyy}.",
+            "leave", "/leave", ct);
+        await unitOfWork.SaveChangesAsync(ct); return Map(x);
     }
     public async Task<LeaveRequestDto> ReviewAsync(Guid id, ReviewLeaveRequest r, CancellationToken ct)
     {
