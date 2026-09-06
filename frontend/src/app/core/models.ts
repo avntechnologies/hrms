@@ -20,9 +20,11 @@ export interface AttendanceRecord {
   clockedInAt?: string;
   clockedOutAt?: string;
   status: string;
+  sessionState: string;
   workHours: number;
   overtimeHours: number;
   source?: string;
+  notes?: string;
   clockInLatitude?: number;
   clockInLongitude?: number;
   clockInAccuracyMeters?: number;
@@ -56,6 +58,9 @@ export interface SelfDashboard {
     baseSalary: number;
   };
   todayAttendance?: AttendanceRecord;
+  todayTotalHours: number;
+  todaySessionCount: number;
+  requireLocationCapture: boolean;
   pendingLeaveRequests: number;
   availableLeaveDays: number;
   pendingTimesheets: number;
@@ -110,7 +115,7 @@ export interface Employee {
 export interface ColumnDefinition {
   key: string;
   label: string;
-  type?: 'text' | 'date' | 'currency' | 'status' | 'number';
+  type?: 'text' | 'date' | 'date-only' | 'datetime' | 'time' | 'duration' | 'minutes' | 'currency' | 'status' | 'number' | 'attendance-map';
 }
 
 export interface FormFieldDefinition {
@@ -138,7 +143,9 @@ export interface FormFieldDefinition {
   defaultValue?: string | number | boolean | string[];
   min?: number;
   help?: string;
+  checkboxLabel?: string;
   sourceKey?: string;
+  hidden?: boolean;
 }
 
 export interface FilterDefinition {
@@ -155,14 +162,25 @@ export interface FilterDefinition {
 export interface RowActionDefinition {
   label: string;
   icon: string;
-  method: 'get' | 'post' | 'put' | 'delete';
-  path: string;
+  method: 'get' | 'post' | 'put' | 'delete' | 'documents';
+  path?: string;
   fields?: FormFieldDefinition[];
   confirm?: string;
   tone?: 'default' | 'danger';
   detailColumns?: ColumnDefinition[];
   detailTitle?: string;
   visibleStatuses?: string[];
+  visibleField?: string;
+  visibleValues?: string[];
+  documentOwnerType?: DocumentOwnerType;
+  documentOwnerIdField?: string;
+  documentCategory?: string;
+  documentLabel?: string;
+  documentReadonly?: boolean;
+  documentReadonlyStatuses?: string[];
+  documentMaxFiles?: number;
+  documentReplaceMode?: boolean;
+  documentAllowedExtensions?: string[];
 }
 
 export interface WorkspaceViewDefinition {

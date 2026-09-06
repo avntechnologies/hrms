@@ -1,6 +1,7 @@
 import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import {
   ReactiveFormsModule,
   UntypedFormBuilder,
@@ -19,11 +20,13 @@ import {
   ColumnDefinition,
   FormFieldDefinition,
   ModuleDefinition,
+  DocumentOwnerType,
   PagedResult,
   RowActionDefinition,
   WorkspaceViewDefinition,
 } from '../../core/models';
 import { MODULES } from './module.registry';
+import { DocumentComponent } from '../../shared/document/document.component';
 
 type DataRow = Record<string, unknown>;
 type SelectOption = { label: string; value: string | number | boolean };
@@ -39,6 +42,7 @@ type SelectOption = { label: string; value: string | number | boolean };
     MatIconModule,
     MatMenuModule,
     MatProgressSpinnerModule,
+    DocumentComponent,
   ],
   templateUrl: './module.page.html',
   styleUrl: './module.page.scss',
@@ -48,6 +52,7 @@ export class ModulePage implements OnInit, OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly route = inject(ActivatedRoute);
   private readonly fb = inject(UntypedFormBuilder);
+  private readonly sanitizer = inject(DomSanitizer);
   private readonly destroy$ = new Subject<void>();
 
   readonly definition = signal<ModuleDefinition>(MODULES['organization']);
@@ -63,6 +68,19 @@ export class ModulePage implements OnInit, OnDestroy {
   readonly saving = signal(false);
   readonly drawerOpen = signal(false);
   readonly detailOpen = signal(false);
+  readonly locationDialogOpen = signal(false);
+  readonly locationRow = signal<DataRow | null>(null);
+  readonly documentDialogOpen = signal(false);
+  readonly documentOwnerType = signal<DocumentOwnerType>('Employee');
+  readonly documentOwnerId = signal('');
+  readonly documentCategory = signal('attachment');
+  readonly documentLabel = signal('Attachments');
+  readonly documentReadonly = signal(false);
+  readonly documentMaxFiles = signal(10);
+  readonly documentReplaceMode = signal(false);
+  readonly documentAllowedExtensions = signal<string[] | undefined>(undefined);
+  readonly checkInMapUrl = computed(() => this.mapEmbedUrl(this.locationRow(), 'in'));
+  readonly checkOutMapUrl = computed(() => this.mapEmbedUrl(this.locationRow(), 'out'));
   readonly error = signal('');
   readonly success = signal('');
   readonly search = signal('');
@@ -104,9 +122,12 @@ export class ModulePage implements OnInit, OnDestroy {
     this.error.set('');
     this.page.set(page);
     const view = this.view();
-    const params: Record<string, string | number | boolean | undefined> = {
-      ...this.filterForm.getRawValue(),
-    };
+    const params: Record<string, string | number | boolean | undefined> = {};
+    Object.entries(this.filterForm.getRawValue() as DataRow).forEach(([key, value]) => {
+      if (value === null || value === undefined) return;
+      const normalized = typeof value === 'string' ? value.trim() : value;
+      if (normalized !== '') params[key] = normalized as string | number | boolean;
+    });
     const requiredPathKeys = [...view.endpoint.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);
     if (requiredPathKeys.some((key) => !params[key])) {
       this.rows.set([]);
@@ -149,7 +170,8 @@ export class ModulePage implements OnInit, OnDestroy {
   }
 
   clearFilters(): void {
-    this.filterForm.reset();
+    const emptyValues = Object.fromEntries(Object.keys(this.filterForm.controls).map((key) => [key, '']));
+    this.filterForm.reset(emptyValues);
     this.search.set('');
     this.load(1);
   }
@@ -178,6 +200,8 @@ export class ModulePage implements OnInit, OnDestroy {
   }
 
   actionVisible(action: RowActionDefinition, row: DataRow): boolean {
+    if (action.visibleField && action.visibleValues?.length)
+      return action.visibleValues.includes(String(this.value(row, action.visibleField) ?? ''));
     if (!action.visibleStatuses?.length) return true;
     return action.visibleStatuses.includes(String(row['status'] ?? ''));
   }
@@ -203,6 +227,44 @@ export class ModulePage implements OnInit, OnDestroy {
   closeDetails(): void {
     this.detailOpen.set(false);
     this.detailRows.set([]);
+  }
+
+  openAttendanceLocations(row: DataRow): void {
+    this.locationRow.set(row);
+    this.locationDialogOpen.set(true);
+  }
+
+  closeAttendanceLocations(): void {
+    this.locationDialogOpen.set(false);
+    this.locationRow.set(null);
+  }
+
+  closeDocuments(): void {
+    this.documentDialogOpen.set(false);
+    this.documentOwnerId.set('');
+  }
+
+  hasAttendanceLocation(row: DataRow): boolean {
+    return this.coordinates(row, 'in') !== null || this.coordinates(row, 'out') !== null;
+  }
+
+  locationText(kind: 'in' | 'out'): string {
+    const row = this.locationRow();
+    if (!row) return 'Location not captured';
+    const address = row[kind === 'in' ? 'clockInAddress' : 'clockOutAddress'];
+    const coordinates = this.coordinates(row, kind);
+    return typeof address === 'string' && address.trim()
+      ? address
+      : coordinates
+        ? `${coordinates.latitude}, ${coordinates.longitude}`
+        : 'Location not captured';
+  }
+
+  locationAccuracy(kind: 'in' | 'out'): string {
+    const row = this.locationRow();
+    const value = row?.[kind === 'in' ? 'clockInAccuracyMeters' : 'clockOutAccuracyMeters'];
+    const accuracy = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(accuracy) ? `Accuracy approximately ${Math.round(accuracy)} m` : '';
   }
 
   exportCsv(): void {
@@ -297,6 +359,75 @@ export class ModulePage implements OnInit, OnDestroy {
     return '';
   }
 
+  isOptionSelected(key: string, value: SelectOption['value']): boolean {
+    const selected = this.form.get(key)?.value;
+    return Array.isArray(selected) && selected.map(String).includes(String(value));
+  }
+
+  toggleOption(key: string, value: SelectOption['value']): void {
+    const control = this.form.get(key);
+    const selected = Array.isArray(control?.value) ? [...control.value] : [];
+    const index = selected.findIndex((item) => String(item) === String(value));
+    if (index >= 0) selected.splice(index, 1); else selected.push(value);
+    control?.setValue(selected);
+    control?.markAsTouched();
+  }
+
+  multiselectLabel(field: FormFieldDefinition): string {
+    const selected = this.form.get(field.key)?.value;
+    if (!Array.isArray(selected) || selected.length === 0) return `Select ${field.label.toLowerCase()}`;
+    return selected.map((value) => this.lookupLabels()[String(value)] ?? String(value)).join(', ');
+  }
+
+  attendanceDuration(): string {
+    const start = String(this.form.get('officeStartsAt')?.value ?? '').slice(0, 5);
+    const end = String(this.form.get('officeEndsAt')?.value ?? '').slice(0, 5);
+    if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) return '—';
+    const [startHour, startMinute] = start.split(':').map(Number);
+    const [endHour, endMinute] = end.split(':').map(Number);
+    const minutes = endHour * 60 + endMinute - startHour * 60 - startMinute;
+    return minutes > 0 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : 'End time must be after start time';
+  }
+
+  duration(value: unknown): string {
+    const hours = Number(value);
+    if (!Number.isFinite(hours) || hours <= 0) return '0 min';
+    const total = Math.round(hours * 60);
+    return `${Math.floor(total / 60) ? `${Math.floor(total / 60)} h ` : ''}${total % 60} min`;
+  }
+
+  minutes(value: unknown): string {
+    const total = Math.max(0, Math.round(Number(value) || 0));
+    return `${Math.floor(total / 60) ? `${Math.floor(total / 60)} h ` : ''}${total % 60} min`;
+  }
+
+  private mapEmbedUrl(row: DataRow | null, kind: 'in' | 'out'): SafeResourceUrl | null {
+    if (!row) return null;
+    const point = this.coordinates(row, kind);
+    if (!point) return null;
+    const offset = 0.006;
+    const bbox = [
+      point.longitude - offset,
+      point.latitude - offset,
+      point.longitude + offset,
+      point.latitude + offset,
+    ].join(',');
+    const url = `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${point.latitude}%2C${point.longitude}`;
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+  }
+
+  private coordinates(
+    row: DataRow,
+    kind: 'in' | 'out',
+  ): { latitude: number; longitude: number } | null {
+    const rawLatitude = row[kind === 'in' ? 'clockInLatitude' : 'clockOutLatitude'];
+    const rawLongitude = row[kind === 'in' ? 'clockInLongitude' : 'clockOutLongitude'];
+    if (rawLatitude === null || rawLatitude === undefined || rawLongitude === null || rawLongitude === undefined) return null;
+    const latitude = Number(rawLatitude);
+    const longitude = Number(rawLongitude);
+    return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
+  }
+
   actionResultHint(): string {
     const row = this.detailRows()[0];
     return row && Object.keys(row).length === 1 ? String(Object.values(row)[0]) : '';
@@ -305,6 +436,24 @@ export class ModulePage implements OnInit, OnDestroy {
   private runAction(action: RowActionDefinition, row: DataRow | null): void {
     this.error.set('');
     this.success.set('');
+    if (action.method === 'documents') {
+      if (!row || !action.documentOwnerType) return;
+      const ownerId = String(row[action.documentOwnerIdField ?? 'id'] ?? '');
+      if (!ownerId) {
+        this.error.set('This record does not have a document owner.');
+        return;
+      }
+      this.documentOwnerType.set(action.documentOwnerType);
+      this.documentOwnerId.set(ownerId);
+      this.documentCategory.set(action.documentCategory ?? 'attachment');
+      this.documentLabel.set(action.documentLabel ?? action.label);
+      this.documentReadonly.set(Boolean(action.documentReadonly) || Boolean(action.documentReadonlyStatuses?.includes(String(row['status'] ?? ''))));
+      this.documentMaxFiles.set(action.documentMaxFiles ?? 10);
+      this.documentReplaceMode.set(action.documentReplaceMode ?? false);
+      this.documentAllowedExtensions.set(action.documentAllowedExtensions);
+      this.documentDialogOpen.set(true);
+      return;
+    }
     if (action.method === 'get') {
       this.execute(action, row, {});
       return;
@@ -328,7 +477,7 @@ export class ModulePage implements OnInit, OnDestroy {
   private execute(action: RowActionDefinition, row: DataRow | null, payload: DataRow): void {
     this.saving.set(true);
     this.error.set('');
-    const path = this.interpolatePath(action.path, row, payload);
+    const path = this.interpolatePath(action.path ?? '', row, payload);
     const request =
       action.method === 'get'
         ? this.api.get<unknown>(path)

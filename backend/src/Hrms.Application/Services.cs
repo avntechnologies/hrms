@@ -11,7 +11,7 @@ public interface ITenantService
 
 public interface IAuthService
 {
-    Task<TokenResponse> LoginAsync(LoginRequest request, CancellationToken cancellationToken);
+    Task<TokenResponse> LoginAsync(LoginRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken);
     Task<TokenResponse> RefreshAsync(RefreshRequest request, CancellationToken cancellationToken);
     Task RevokeAsync(RefreshRequest request, CancellationToken cancellationToken);
 }
@@ -34,6 +34,7 @@ public interface IEmployeeService
     Task<PagedResult<EmployeeDto>> SearchAsync(PagedRequest request, EmploymentStatus? status, Guid? departmentId, CancellationToken cancellationToken);
     Task<EmployeeDto> UpdateAsync(Guid id, UpdateEmployeeRequest request, CancellationToken cancellationToken);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken);
+    Task<IReadOnlyList<LoginHistoryDto>> GetLoginHistoryAsync(Guid id, int take, CancellationToken cancellationToken);
 }
 
 public interface IOrganizationService
@@ -61,6 +62,10 @@ public interface IAttendanceService
     Task<AttendanceDto> ClockInAsync(ClockRequest request, CancellationToken cancellationToken);
     Task<AttendanceDto> ClockOutAsync(ClockRequest request, CancellationToken cancellationToken);
     Task<PagedResult<AttendanceDto>> SearchAsync(PagedRequest request, Guid? employeeId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken);
+    Task<IReadOnlyList<AttendancePolicyDto>> GetPolicyAsync(CancellationToken cancellationToken);
+    Task<AttendancePolicyDto> UpdatePolicyAsync(UpdateAttendancePolicyRequest request, CancellationToken cancellationToken);
+    Task<PagedResult<DailyAttendanceReportDto>> ReportAsync(PagedRequest request, Guid? employeeId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken);
+    Task<IReadOnlyList<AttendanceSummaryDto>> SummaryAsync(Guid? employeeId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken);
 }
 
 public interface IWorkforceOperationsService
@@ -92,6 +97,7 @@ public interface IRecruitmentService
 {
     Task<JobDto> CreateJobAsync(CreateJobRequest request, CancellationToken cancellationToken);
     Task<CandidateDto> CreateCandidateAsync(CreateCandidateRequest request, CancellationToken cancellationToken);
+    Task<IReadOnlyList<CandidateDto>> ListCandidatesAsync(CancellationToken cancellationToken);
     Task<JobApplicationDto> ApplyAsync(ApplyCandidateRequest request, CancellationToken cancellationToken);
     Task<JobApplicationDto> MoveAsync(Guid applicationId, MoveCandidateRequest request, CancellationToken cancellationToken);
     Task<IReadOnlyList<JobDto>> ListJobsAsync(JobStatus? status, CancellationToken cancellationToken);
@@ -139,10 +145,13 @@ public interface IDashboardService
 public interface ISelfService
 {
     Task<SelfProfileDto> GetProfileAsync(CancellationToken cancellationToken);
+    Task<SelfProfileDto> UpdateProfileAsync(UpdateSelfProfileRequest request, CancellationToken cancellationToken);
     Task<SelfDashboardDto> GetDashboardAsync(CancellationToken cancellationToken);
     Task<AttendanceDto> ClockInAsync(SelfClockRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken);
     Task<AttendanceDto> ClockOutAsync(SelfClockRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken);
     Task<PagedResult<AttendanceDto>> GetAttendanceAsync(PagedRequest request, DateOnly? from, DateOnly? to, CancellationToken cancellationToken);
+    Task<PagedResult<DailyAttendanceReportDto>> GetAttendanceReportAsync(PagedRequest request, DateOnly? from, DateOnly? to, CancellationToken cancellationToken);
+    Task<IReadOnlyList<AttendanceSummaryDto>> GetAttendanceSummaryAsync(DateOnly? from, DateOnly? to, CancellationToken cancellationToken);
     Task<LeaveRequestDto> SubmitLeaveAsync(SelfLeaveRequest request, CancellationToken cancellationToken);
     Task<IReadOnlyList<LeaveTypeDto>> GetLeaveTypesAsync(CancellationToken cancellationToken);
     Task<PagedResult<LeaveRequestDto>> GetLeaveAsync(PagedRequest request, LeaveRequestStatus? status, CancellationToken cancellationToken);
@@ -253,10 +262,10 @@ public sealed class TenantService(
 
 public sealed class AuthService(
     IRepository<Tenant> tenants, IRepository<UserAccount> users, IRepository<Role> roles, IRepository<UserRole> userRoles,
-    IRepository<RefreshToken> refreshTokens, IRepository<Employee> employees, ICurrentTenant currentTenant, IPasswordHasher passwordHasher,
+    IRepository<RefreshToken> refreshTokens, IRepository<Employee> employees, IRepository<AuditLog> auditLogs, ICurrentTenant currentTenant, IPasswordHasher passwordHasher,
     ITokenService tokenService, IUnitOfWork unitOfWork) : IAuthService
 {
-    public async Task<TokenResponse> LoginAsync(LoginRequest request, CancellationToken ct)
+    public async Task<TokenResponse> LoginAsync(LoginRequest request, string? ipAddress, string? userAgent, CancellationToken ct)
     {
         var slug = request.TenantSlug.Trim().ToLowerInvariant();
         var now = DateTimeOffset.UtcNow;
@@ -277,6 +286,18 @@ public sealed class AuthService(
         user.FailedLoginCount = 0;
         user.LockedUntil = null;
         user.LastLoginAt = DateTimeOffset.UtcNow;
+        await auditLogs.AddAsync(new AuditLog
+        {
+            TenantId = tenant.Id,
+            ActorUserId = user.Id,
+            Action = "Login",
+            EntityType = nameof(UserAccount),
+            EntityId = user.Id.ToString(),
+            IpAddress = ipAddress,
+            AfterJson = System.Text.Json.JsonSerializer.Serialize(new { UserAgent = userAgent }),
+            CreatedAt = DateTimeOffset.UtcNow,
+            Version = 1
+        }, ct);
         return await IssueAsync(user, ct);
     }
 
@@ -385,7 +406,7 @@ public sealed class IdentityAdminService(IRepository<UserAccount> users, IReposi
     private static UserAdminDto Map(UserAccount x, IEnumerable<Guid> roleIds, Guid? employeeId = null) => new(x.Id, employeeId, x.DisplayName, x.Email, x.IsActive, roleIds.ToArray(), x.Version);
 }
 
-public sealed class EmployeeService(IRepository<Employee> employees, IRepository<UserAccount> users, IRepository<RefreshToken> refreshTokens, IRepository<TenantSubscription> subscriptions, ICurrentTenant tenant, IUnitOfWork unitOfWork) : ServiceBase(tenant), IEmployeeService
+public sealed class EmployeeService(IRepository<Employee> employees, IRepository<UserAccount> users, IRepository<RefreshToken> refreshTokens, IRepository<TenantSubscription> subscriptions, IRepository<AuditLog> auditLogs, ICurrentTenant tenant, IUnitOfWork unitOfWork) : ServiceBase(tenant), IEmployeeService
 {
     public async Task<EmployeeDto> CreateAsync(CreateEmployeeRequest r, CancellationToken ct)
     {
@@ -426,6 +447,20 @@ public sealed class EmployeeService(IRepository<Employee> employees, IRepository
         await unitOfWork.SaveChangesAsync(ct); return Map(e);
     }
     public async Task DeleteAsync(Guid id, CancellationToken ct) { var e = await employees.GetByIdAsync(id, ct) ?? throw new KeyNotFoundException("Employee not found."); if (e.UserId.HasValue && await users.GetByIdAsync(e.UserId.Value, ct) is { } account) { account.IsActive = false; foreach (var token in await refreshTokens.ListAsync(x => x.UserId == account.Id && x.RevokedAt == null, cancellationToken: ct)) token.RevokedAt = DateTimeOffset.UtcNow; } employees.Remove(e); await unitOfWork.SaveChangesAsync(ct); }
+    public async Task<IReadOnlyList<LoginHistoryDto>> GetLoginHistoryAsync(Guid id, int take, CancellationToken ct)
+    {
+        var employee = await employees.GetByIdAsync(id, ct) ?? throw new KeyNotFoundException("Employee not found.");
+        if (!employee.UserId.HasValue) return [];
+        var userId = employee.UserId.Value.ToString();
+        var rows = await auditLogs.ListAsync(x => x.EntityType == nameof(UserAccount) && x.EntityId == userId && x.Action == "Login", q => q.OrderByDescending(x => x.CreatedAt), take: Math.Clamp(take, 1, 200), cancellationToken: ct);
+        return rows.Select(x => new LoginHistoryDto(x.CreatedAt, x.IpAddress, UserAgent(x.AfterJson))).ToArray();
+    }
+    private static string? UserAgent(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { using var value = System.Text.Json.JsonDocument.Parse(json); return value.RootElement.TryGetProperty("UserAgent", out var agent) ? agent.GetString() : null; }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
     private static EmployeeDto Map(Employee e) => new(e.Id, e.EmployeeNumber, e.FullName, e.WorkEmail, e.Phone, e.HireDate, e.Status, e.EmploymentType, e.DepartmentId, e.DesignationId, e.LocationId, e.ManagerId, e.BaseSalary, e.SalaryCurrency, e.UserId, e.Version);
 }
 
@@ -442,7 +477,7 @@ public sealed class OrganizationService(IRepository<Department> departments, IRe
     private static LocationDto Map(Location x) => new(x.Id, x.Name, x.Code, x.Address, x.City, x.CountryCode, x.IsActive);
 }
 
-public sealed class LeaveService(IRepository<LeaveType> types, IRepository<LeaveBalance> balances, IRepository<LeaveRequest> requests, IRepository<Employee> employees, ICurrentTenant tenant, ICurrentUser user, IUnitOfWork unitOfWork, INotificationService notifications) : ServiceBase(tenant), ILeaveService
+public sealed class LeaveService(IRepository<LeaveType> types, IRepository<LeaveBalance> balances, IRepository<LeaveRequest> requests, IRepository<Employee> employees, IRepository<StoredDocument> documents, ICurrentTenant tenant, ICurrentUser user, IUnitOfWork unitOfWork, INotificationService notifications) : ServiceBase(tenant), ILeaveService
 {
     public async Task<LeaveTypeDto> CreateTypeAsync(CreateLeaveTypeRequest r, CancellationToken ct) { if (await types.AnyAsync(x => x.Code == r.Code.ToUpper(), ct)) throw new DomainException("Leave type code already exists."); var x = new LeaveType { TenantId = TenantId, Name = r.Name.Trim(), Code = r.Code.Trim().ToUpperInvariant(), AnnualAllowance = r.AnnualAllowance, IsPaid = r.IsPaid, RequiresDocument = r.RequiresDocument, MaxConsecutiveDays = r.MaxConsecutiveDays }; await types.AddAsync(x, ct); await unitOfWork.SaveChangesAsync(ct); return Map(x); }
     public async Task<IReadOnlyList<LeaveTypeDto>> ListTypesAsync(CancellationToken ct) => (await types.ListAsync(x => x.IsActive, q => q.OrderBy(x => x.Name), cancellationToken: ct)).Select(Map).ToArray();
@@ -467,6 +502,8 @@ public sealed class LeaveService(IRepository<LeaveType> types, IRepository<Leave
         var x = await requests.GetByIdAsync(id, ct) ?? throw new KeyNotFoundException("Leave request not found."); CheckVersion(x, r.Version);
         if (x.Status != LeaveRequestStatus.Pending) throw new DomainException("Only pending requests can be reviewed.");
         var type = await types.GetByIdAsync(x.LeaveTypeId, ct) ?? throw new KeyNotFoundException("Leave type not found.");
+        if (r.Approve && type.RequiresDocument && !await documents.AnyAsync(d => d.OwnerType == DocumentOwnerType.LeaveRequest && d.OwnerId == x.Id && d.Category == "supporting-document", ct))
+            throw new DomainException($"A supporting document is required before {type.Name} can be approved.");
         var balance = await GetOrCreateBalance(x.EmployeeId, type, x.StartsOn.Year, ct); balance.Pending = Math.Max(0, balance.Pending - x.Days);
         if (r.Approve) { x.Status = LeaveRequestStatus.Approved; balance.Used += x.Days; } else x.Status = LeaveRequestStatus.Rejected;
         x.ReviewedBy = user.UserId; x.ReviewedAt = DateTimeOffset.UtcNow; x.ReviewComment = r.Comment;
@@ -492,17 +529,22 @@ public sealed class LeaveService(IRepository<LeaveType> types, IRepository<Leave
     private static LeaveBalanceDto Map(LeaveBalance x) => new(x.LeaveTypeId, x.Year, x.Entitled, x.Used, x.Pending, x.Available);
 }
 
-public sealed class AttendanceService(IRepository<AttendanceRecord> records, IRepository<Employee> employees, IRepository<Tenant> tenants, ICurrentTenant tenant, IUnitOfWork unitOfWork) : ServiceBase(tenant), IAttendanceService
+public sealed class AttendanceService(IRepository<AttendanceRecord> records, IRepository<AttendancePolicy> policies, IRepository<Employee> employees, IRepository<Tenant> tenants, IRepository<Holiday> holidays, IRepository<LeaveRequest> leaveRequests, ICurrentTenant tenant, IUnitOfWork unitOfWork) : ServiceBase(tenant), IAttendanceService
 {
     public async Task<AttendanceDto> ClockInAsync(ClockRequest r, CancellationToken ct)
     {
         ValidateCoordinates(r);
-        _ = await employees.GetByIdAsync(r.EmployeeId, ct) ?? throw new KeyNotFoundException("Employee not found.");
+        var employee = await employees.GetByIdAsync(r.EmployeeId, ct) ?? throw new KeyNotFoundException("Employee not found.");
+        if (employee.Status is EmploymentStatus.Suspended or EmploymentStatus.Terminated or EmploymentStatus.Resigned) throw new DomainException("Attendance cannot be recorded for an inactive employee.");
         var at = r.Timestamp ?? DateTimeOffset.UtcNow;
+        if (at > DateTimeOffset.UtcNow.AddMinutes(5)) throw new DomainException("Check-in time cannot be in the future.");
         var date = await LocalDate(at, ct);
         if (await records.AnyAsync(x => x.EmployeeId == r.EmployeeId && x.ClockedOutAt == null, ct)) throw new DomainException("Employee already has an open attendance session.");
-        if (await records.AnyAsync(x => x.EmployeeId == r.EmployeeId && x.WorkDate == date, ct)) throw new DomainException("Employee already has attendance for this work date.");
-        var x = new AttendanceRecord { TenantId = TenantId, EmployeeId = r.EmployeeId, WorkDate = date, ClockedInAt = at, Source = r.Source, Notes = r.Notes, ClockInLatitude = r.Latitude, ClockInLongitude = r.Longitude, ClockInAccuracyMeters = r.AccuracyMeters, ClockInAddress = r.Address, ClockInIpAddress = r.IpAddress, ClockInUserAgent = r.UserAgent };
+        var policy = await Policy(ct);
+        var source = NormalizeSource(r.Source);
+        var notes = NormalizeNotes(r.Notes);
+        if (source == "admin" && notes is null) throw new DomainException("A reason is required for a manual attendance entry.");
+        var x = new AttendanceRecord { TenantId = TenantId, EmployeeId = r.EmployeeId, WorkDate = date, ClockedInAt = at, Source = source, Notes = notes, ScheduledStartAt = policy.OfficeStartsAt, ScheduledEndAt = policy.OfficeEndsAt, RequiredMinutes = policy.RequiredMinutesPerDay, LateGraceMinutes = policy.LateGraceMinutes, EarlyDepartureGraceMinutes = policy.EarlyDepartureGraceMinutes, ClockInLatitude = r.Latitude, ClockInLongitude = r.Longitude, ClockInAccuracyMeters = r.AccuracyMeters, ClockInAddress = r.Address, ClockInIpAddress = r.IpAddress, ClockInUserAgent = r.UserAgent };
         await records.AddAsync(x, ct);
         await unitOfWork.SaveChangesAsync(ct);
         return Map(x);
@@ -511,20 +553,148 @@ public sealed class AttendanceService(IRepository<AttendanceRecord> records, IRe
     {
         ValidateCoordinates(r);
         var at = r.Timestamp ?? DateTimeOffset.UtcNow;
+        if (at > DateTimeOffset.UtcNow.AddMinutes(5)) throw new DomainException("Check-out time cannot be in the future.");
         var open = await records.ListAsync(x => x.EmployeeId == r.EmployeeId && x.ClockedOutAt == null, q => q.OrderByDescending(x => x.ClockedInAt), take: 1, cancellationToken: ct);
         var x = open.FirstOrDefault() ?? throw new DomainException("No open clock-in exists for this employee.");
+        if (NormalizeSource(r.Source) == "admin" && string.IsNullOrWhiteSpace(r.Notes)) throw new DomainException("A reason is required for a manual attendance entry.");
         if (at <= x.ClockedInAt) throw new DomainException("Clock-out must be after clock-in.");
         x.ClockedOutAt = at;
         x.WorkHours = Math.Round((decimal)(at - x.ClockedInAt!.Value).TotalHours, 2);
-        x.OvertimeHours = Math.Max(0, x.WorkHours - 8);
+        var earlierHours = (await records.ListAsync(session => session.EmployeeId == x.EmployeeId && session.WorkDate == x.WorkDate && session.Id != x.Id, cancellationToken: ct)).Sum(session => session.WorkHours);
+        var requiredHours = (x.RequiredMinutes ?? (await Policy(ct)).RequiredMinutesPerDay) / 60m;
+        x.OvertimeHours = Math.Round(Math.Max(0, earlierHours + x.WorkHours - requiredHours) - Math.Max(0, earlierHours - requiredHours), 2);
         x.ClockOutLatitude = r.Latitude; x.ClockOutLongitude = r.Longitude; x.ClockOutAccuracyMeters = r.AccuracyMeters;
         x.ClockOutAddress = r.Address; x.ClockOutIpAddress = r.IpAddress; x.ClockOutUserAgent = r.UserAgent;
+        if (!string.IsNullOrWhiteSpace(r.Notes))
+        {
+            var checkoutNote = NormalizeNotes(r.Notes);
+            x.Notes = string.IsNullOrWhiteSpace(x.Notes) ? checkoutNote : NormalizeNotes($"{x.Notes}\nCheck-out: {checkoutNote}");
+        }
         await unitOfWork.SaveChangesAsync(ct);
         return Map(x);
     }
-    public async Task<PagedResult<AttendanceDto>> SearchAsync(PagedRequest r, Guid? employeeId, DateOnly? from, DateOnly? to, CancellationToken ct) { System.Linq.Expressions.Expression<Func<AttendanceRecord, bool>> p = x => (!employeeId.HasValue || x.EmployeeId == employeeId) && (!from.HasValue || x.WorkDate >= from) && (!to.HasValue || x.WorkDate <= to); var total = await records.CountAsync(p, ct); var rows = await records.ListAsync(p, q => q.OrderByDescending(x => x.WorkDate), r.Skip, r.SafePageSize, ct); return new(rows.Select(Map).ToArray(), r.SafePage, r.SafePageSize, total); }
+    public async Task<PagedResult<AttendanceDto>> SearchAsync(PagedRequest r, Guid? employeeId, DateOnly? from, DateOnly? to, CancellationToken ct) { System.Linq.Expressions.Expression<Func<AttendanceRecord, bool>> p = x => (!employeeId.HasValue || x.EmployeeId == employeeId) && (!from.HasValue || x.WorkDate >= from) && (!to.HasValue || x.WorkDate <= to); var total = await records.CountAsync(p, ct); var rows = await records.ListAsync(p, q => q.OrderByDescending(x => x.WorkDate).ThenByDescending(x => x.ClockedInAt), r.Skip, r.SafePageSize, ct); return new(rows.Select(Map).ToArray(), r.SafePage, r.SafePageSize, total); }
+    public async Task<IReadOnlyList<AttendancePolicyDto>> GetPolicyAsync(CancellationToken ct) => [MapPolicy(await Policy(ct))];
+    public async Task<AttendancePolicyDto> UpdatePolicyAsync(UpdateAttendancePolicyRequest r, CancellationToken ct)
+    {
+        var requiredMinutes = (int)(r.OfficeEndsAt.ToTimeSpan() - r.OfficeStartsAt.ToTimeSpan()).TotalMinutes;
+        if (requiredMinutes <= 0) throw new DomainException("Office end time must be after office start time.");
+        if (r.LateGraceMinutes is < 0 or > 180 || r.EarlyDepartureGraceMinutes is < 0 or > 180) throw new DomainException("Grace periods must be between 0 and 180 minutes.");
+        var days = r.WorkingDays.Select(x => x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (days.Length == 0 || days.Any(x => !Enum.TryParse<DayOfWeek>(x, true, out _))) throw new DomainException("Working days are invalid.");
+        var policy = await policies.FirstOrDefaultAsync(_ => true, ct);
+        if (policy is null) { policy = new AttendancePolicy { TenantId = TenantId }; await policies.AddAsync(policy, ct); }
+        else if (r.Version > 0) CheckVersion(policy, r.Version);
+        policy.OfficeStartsAt = r.OfficeStartsAt; policy.OfficeEndsAt = r.OfficeEndsAt;
+        policy.RequiredMinutesPerDay = requiredMinutes; policy.LateGraceMinutes = r.LateGraceMinutes;
+        policy.EarlyDepartureGraceMinutes = r.EarlyDepartureGraceMinutes; policy.WorkingDaysCsv = string.Join(',', days); policy.RequireLocationCapture = r.RequireLocationCapture;
+        await unitOfWork.SaveChangesAsync(ct); return MapPolicy(policy);
+    }
+    public async Task<PagedResult<DailyAttendanceReportDto>> ReportAsync(PagedRequest r, Guid? employeeId, DateOnly? from, DateOnly? to, CancellationToken ct)
+    {
+        var (start, end, today) = await ResolveRange(from, to, ct);
+        var rows = await ReportRows(employeeId, start, end, today, ct);
+        return new(rows.Skip(r.Skip).Take(r.SafePageSize).ToArray(), r.SafePage, r.SafePageSize, rows.Count);
+    }
+    public async Task<IReadOnlyList<AttendanceSummaryDto>> SummaryAsync(Guid? employeeId, DateOnly? from, DateOnly? to, CancellationToken ct)
+    {
+        var (start, end, today) = await ResolveRange(from, to, ct);
+        var rows = await ReportRows(employeeId, start, end, today, ct);
+        return rows.GroupBy(x => new { x.EmployeeId, x.EmployeeName }).Select(group =>
+        {
+            var worked = group.Where(x => x.SessionCount > 0).ToArray();
+            return new AttendanceSummaryDto(group.Key.EmployeeId, group.Key.EmployeeName, start, end,
+                group.Count(x => x.RequiredHours > 0), worked.Length, group.Count(x => x.Status == "Absent"), group.Count(x => x.Status == "On approved leave"),
+                Math.Round(worked.Sum(x => x.TotalHours), 2), worked.Length == 0 ? 0 : Math.Round(worked.Average(x => x.TotalHours), 2),
+                worked.Count(x => x.LateMinutes > 0), worked.Count(x => x.EarlyDepartureMinutes > 0), worked.Count(x => x.ShortfallHours > 0), Math.Round(worked.Sum(x => x.OvertimeHours), 2));
+        }).OrderBy(x => x.EmployeeName).ToArray();
+    }
     private static void ValidateCoordinates(ClockRequest r) { if (r.Latitude is < -90 or > 90 || r.Longitude is < -180 or > 180 || r.AccuracyMeters < 0) throw new DomainException("Location coordinates are invalid."); }
-    internal static AttendanceDto Map(AttendanceRecord x) => new(x.Id, x.EmployeeId, x.WorkDate, x.ClockedInAt, x.ClockedOutAt, x.Status, x.WorkHours, x.OvertimeHours, x.Source, x.ClockInLatitude, x.ClockInLongitude, x.ClockInAccuracyMeters, x.ClockInAddress, x.ClockInIpAddress, x.ClockInUserAgent, x.ClockOutLatitude, x.ClockOutLongitude, x.ClockOutAccuracyMeters, x.ClockOutAddress, x.ClockOutIpAddress, x.ClockOutUserAgent, x.Version);
+    internal static AttendanceDto Map(AttendanceRecord x) => new(x.Id, x.EmployeeId, x.WorkDate, x.ClockedInAt, x.ClockedOutAt, x.Status, x.ClockedOutAt.HasValue ? "Completed" : "In progress", x.WorkHours, x.OvertimeHours, x.Source, x.Notes, x.ClockInLatitude, x.ClockInLongitude, x.ClockInAccuracyMeters, x.ClockInAddress, x.ClockInIpAddress, x.ClockInUserAgent, x.ClockOutLatitude, x.ClockOutLongitude, x.ClockOutAccuracyMeters, x.ClockOutAddress, x.ClockOutIpAddress, x.ClockOutUserAgent, x.Version);
+    private static AttendancePolicyDto MapPolicy(AttendancePolicy x) => new(x.Id == Guid.Empty ? null : x.Id, x.OfficeStartsAt, x.OfficeEndsAt, $"{x.RequiredMinutesPerDay / 60} h {x.RequiredMinutesPerDay % 60} min", x.LateGraceMinutes, x.EarlyDepartureGraceMinutes, x.WorkingDaysCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), x.RequireLocationCapture, x.Version);
+    private async Task<AttendancePolicy> Policy(CancellationToken ct) => await policies.FirstOrDefaultAsync(_ => true, ct) ?? new AttendancePolicy { TenantId = TenantId };
+    private async Task<List<DailyAttendanceReportDto>> ReportRows(Guid? employeeId, DateOnly start, DateOnly end, DateOnly today, CancellationToken ct)
+    {
+        var policy = await Policy(ct);
+        var company = await tenants.GetByIdAsync(TenantId, ct);
+        TimeZoneInfo zone; try { zone = TimeZoneInfo.FindSystemTimeZoneById(company?.TimeZone ?? "UTC"); } catch { zone = TimeZoneInfo.Utc; }
+        var sessions = await records.ListAsync(x => (!employeeId.HasValue || x.EmployeeId == employeeId) && x.WorkDate >= start && x.WorkDate <= end, cancellationToken: ct);
+        var people = await employees.ListAsync(x => (!employeeId.HasValue || x.Id == employeeId) && x.HireDate <= end, q => q.OrderBy(x => x.FirstName).ThenBy(x => x.LastName), cancellationToken: ct);
+        if (employeeId.HasValue && people.Count == 0) throw new KeyNotFoundException("Employee not found.");
+        var companyHolidays = await holidays.ListAsync(x => x.Date >= start && x.Date <= end && !x.IsOptional, cancellationToken: ct);
+        var approvedLeave = await leaveRequests.ListAsync(x => x.Status == LeaveRequestStatus.Approved && x.StartsOn <= end && x.EndsOn >= start && (!employeeId.HasValue || x.EmployeeId == employeeId), cancellationToken: ct);
+        var workingDays = policy.WorkingDaysCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => Enum.TryParse<DayOfWeek>(x, true, out var day) ? day : (DayOfWeek?)null).Where(x => x.HasValue).Select(x => x!.Value).ToHashSet();
+        var sessionGroups = sessions.GroupBy(x => new { x.EmployeeId, x.WorkDate }).ToDictionary(x => (x.Key.EmployeeId, x.Key.WorkDate), x => x.ToArray());
+        var result = new List<DailyAttendanceReportDto>();
+        foreach (var person in people)
+        {
+            var firstDate = person.HireDate > start ? person.HireDate : start;
+            for (var date = firstDate; date <= end && date <= today; date = date.AddDays(1))
+            {
+                sessionGroups.TryGetValue((person.Id, date), out var daySessions);
+                daySessions ??= [];
+                var isWorkingDay = workingDays.Contains(date.DayOfWeek);
+                var holiday = companyHolidays.Any(x => x.Date == date && (!x.LocationId.HasValue || x.LocationId == person.LocationId));
+                var onLeave = approvedLeave.Any(x => x.EmployeeId == person.Id && x.StartsOn <= date && x.EndsOn >= date);
+                if (daySessions.Length == 0)
+                {
+                    if (!isWorkingDay && !holiday) continue;
+                    var status = holiday ? "Company holiday" : onLeave ? "On approved leave" : date == today ? "Not checked in" : "Absent";
+                    var scheduledHours = holiday || onLeave ? 0 : Math.Round(policy.RequiredMinutesPerDay / 60m, 2);
+                    var shortfallHours = date == today ? 0 : scheduledHours;
+                    result.Add(new DailyAttendanceReportDto(person.Id, person.FullName, date, null, null, 0, scheduledHours, 0, 0, 0, shortfallHours, 0, status));
+                    continue;
+                }
+                var first = daySessions.Where(x => x.ClockedInAt.HasValue).MinBy(x => x.ClockedInAt)?.ClockedInAt;
+                var last = daySessions.Where(x => x.ClockedOutAt.HasValue).MaxBy(x => x.ClockedOutAt)?.ClockedOutAt;
+                var open = daySessions.Where(x => x.ClockedOutAt is null && x.ClockedInAt.HasValue).ToArray();
+                var liveHours = open.Sum(x => Math.Max(0, (decimal)(DateTimeOffset.UtcNow - x.ClockedInAt!.Value).TotalHours));
+                var total = Math.Round(daySessions.Sum(x => x.WorkHours) + liveHours, 2);
+                var snapshot = daySessions.OrderBy(x => x.ClockedInAt).First();
+                var scheduledStart = snapshot.ScheduledStartAt ?? policy.OfficeStartsAt;
+                var scheduledEnd = snapshot.ScheduledEndAt ?? policy.OfficeEndsAt;
+                var lateGrace = snapshot.LateGraceMinutes ?? policy.LateGraceMinutes;
+                var earlyGrace = snapshot.EarlyDepartureGraceMinutes ?? policy.EarlyDepartureGraceMinutes;
+                var requiredMinutes = snapshot.RequiredMinutes ?? policy.RequiredMinutesPerDay;
+                var firstTime = first.HasValue ? TimeOnly.FromDateTime(TimeZoneInfo.ConvertTime(first.Value, zone).DateTime) : (TimeOnly?)null;
+                var lastTime = last.HasValue ? TimeOnly.FromDateTime(TimeZoneInfo.ConvertTime(last.Value, zone).DateTime) : (TimeOnly?)null;
+                var required = isWorkingDay && !holiday && !onLeave ? Math.Round(requiredMinutes / 60m, 2) : 0;
+                var late = required > 0 && firstTime.HasValue ? Math.Max(0, (int)(firstTime.Value.ToTimeSpan() - scheduledStart.AddMinutes(lateGrace).ToTimeSpan()).TotalMinutes) : 0;
+                var early = required > 0 && lastTime.HasValue && open.Length == 0 ? Math.Max(0, (int)(scheduledEnd.AddMinutes(-earlyGrace).ToTimeSpan() - lastTime.Value.ToTimeSpan()).TotalMinutes) : 0;
+                var overtime = Math.Round(Math.Max(0, total - required), 2);
+                var shortfall = open.Length > 0 ? 0 : Math.Round(Math.Max(0, required - total), 2);
+                var issues = new List<string>();
+                if (open.Length > 0) issues.Add("In progress");
+                else if (daySessions.Any(x => x.ClockedInAt.HasValue && x.ClockedOutAt.HasValue && x.ClockedOutAt.Value - x.ClockedInAt.Value > TimeSpan.FromHours(24))) issues.Add("Review required");
+                if (holiday) issues.Add("Worked on holiday"); else if (onLeave) issues.Add("Worked during approved leave");
+                if (late > 0) issues.Add("Late arrival");
+                if (early > 0) issues.Add("Early departure");
+                if (shortfall > 0) issues.Add("Insufficient hours");
+                result.Add(new DailyAttendanceReportDto(person.Id, person.FullName, date, first, last, total, required, late, early, overtime, shortfall, daySessions.Length, issues.Count == 0 ? "Compliant" : string.Join(" · ", issues)));
+            }
+        }
+        return result.OrderByDescending(x => x.WorkDate).ThenBy(x => x.EmployeeName).ToList();
+    }
+    private async Task<(DateOnly Start, DateOnly End, DateOnly Today)> ResolveRange(DateOnly? from, DateOnly? to, CancellationToken ct)
+    {
+        var today = await LocalDate(DateTimeOffset.UtcNow, ct);
+        var end = to ?? today; var start = from ?? new DateOnly(end.Year, end.Month, 1);
+        if (start > end) throw new DomainException("From date must be on or before to date.");
+        if (end.DayNumber - start.DayNumber > 366) throw new DomainException("Attendance reports are limited to a 12-month range.");
+        return (start, end, today);
+    }
+    private static string NormalizeSource(string source)
+    {
+        var value = source.Trim().ToLowerInvariant();
+        return value is "web" or "mobile" or "kiosk" or "admin" ? value : throw new DomainException("Attendance source is invalid.");
+    }
+    private static string? NormalizeNotes(string? notes)
+    {
+        var value = notes?.Trim();
+        if (value?.Length > 500) throw new DomainException("Attendance notes cannot exceed 500 characters.");
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
     private async Task<DateOnly> LocalDate(DateTimeOffset timestamp, CancellationToken ct)
     {
         var company = await tenants.GetByIdAsync(TenantId, ct);
@@ -572,6 +742,7 @@ public sealed class RecruitmentService(IRepository<JobOpening> jobs, IRepository
 {
     public async Task<JobDto> CreateJobAsync(CreateJobRequest r, CancellationToken ct) { if (await jobs.AnyAsync(x => x.Code == r.Code.ToUpper(), ct)) throw new DomainException("Job code already exists."); var x = new JobOpening { TenantId = TenantId, Title = r.Title.Trim(), Code = r.Code.Trim().ToUpperInvariant(), Description = r.Description, DepartmentId = r.DepartmentId, HiringManagerId = r.HiringManagerId, Openings = Math.Max(1, r.Openings), ClosesOn = r.ClosesOn, Status = JobStatus.Open }; await jobs.AddAsync(x, ct); await notifications.QueueForEmployeesAsync([x.HiringManagerId], "Hiring responsibility assigned", $"You are the hiring manager for {x.Title} ({x.Code}).", "recruitment", "/recruitment", ct); await unitOfWork.SaveChangesAsync(ct); return Map(x); }
     public async Task<CandidateDto> CreateCandidateAsync(CreateCandidateRequest r, CancellationToken ct) { var email = r.Email.Trim().ToLowerInvariant(); if (await candidates.AnyAsync(x => x.Email == email, ct)) throw new DomainException("Candidate email already exists."); var x = new Candidate { TenantId = TenantId, FirstName = r.FirstName.Trim(), LastName = r.LastName.Trim(), Email = email, Phone = r.Phone, ResumeStorageKey = r.ResumeStorageKey, Source = r.Source }; await candidates.AddAsync(x, ct); await unitOfWork.SaveChangesAsync(ct); return Map(x); }
+    public async Task<IReadOnlyList<CandidateDto>> ListCandidatesAsync(CancellationToken ct) => (await candidates.ListAsync(orderBy: q => q.OrderByDescending(x => x.CreatedAt), cancellationToken: ct)).Select(Map).ToArray();
     public async Task<JobApplicationDto> ApplyAsync(ApplyCandidateRequest r, CancellationToken ct) { var job = await jobs.GetByIdAsync(r.JobOpeningId, ct) ?? throw new KeyNotFoundException("Job not found."); if (job.Status != JobStatus.Open) throw new DomainException("Job is not open."); var candidate = await candidates.GetByIdAsync(r.CandidateId, ct) ?? throw new KeyNotFoundException("Candidate not found."); if (await applications.AnyAsync(x => x.JobOpeningId == r.JobOpeningId && x.CandidateId == r.CandidateId, ct)) throw new DomainException("Candidate already applied to this job."); var x = new JobApplication { TenantId = TenantId, JobOpeningId = r.JobOpeningId, CandidateId = r.CandidateId, AppliedAt = DateTimeOffset.UtcNow }; await applications.AddAsync(x, ct); await notifications.QueueForEmployeesAsync([job.HiringManagerId], "New job application", $"{candidate.FirstName} {candidate.LastName} applied for {job.Title}.", "recruitment", "/recruitment", ct); await unitOfWork.SaveChangesAsync(ct); return Map(x); }
     public async Task<JobApplicationDto> MoveAsync(Guid id, MoveCandidateRequest r, CancellationToken ct) { var x = await applications.GetByIdAsync(id, ct) ?? throw new KeyNotFoundException("Application not found."); x.Stage = r.Stage; x.Rating = r.Rating; x.Notes = r.Notes; await unitOfWork.SaveChangesAsync(ct); return Map(x); }
     public async Task<IReadOnlyList<JobDto>> ListJobsAsync(JobStatus? status, CancellationToken ct) => (await jobs.ListAsync(x => !status.HasValue || x.Status == status, q => q.OrderByDescending(x => x.CreatedAt), cancellationToken: ct)).Select(Map).ToArray();
@@ -597,10 +768,10 @@ public sealed class AssetService(IRepository<Asset> assets, IRepository<AssetAss
     private static AssetDto Map(Asset x) => new(x.Id, x.AssetTag, x.Name, x.Category, x.SerialNumber, x.Status);
 }
 
-public sealed class ExpenseService(IRepository<ExpenseClaim> expenses, IRepository<Employee> employees, ICurrentTenant tenant, ICurrentUser user, IUnitOfWork unitOfWork, INotificationService notifications) : ServiceBase(tenant), IExpenseService
+public sealed class ExpenseService(IRepository<ExpenseClaim> expenses, IRepository<Employee> employees, IRepository<StoredDocument> documents, ICurrentTenant tenant, ICurrentUser user, IUnitOfWork unitOfWork, INotificationService notifications) : ServiceBase(tenant), IExpenseService
 {
     public async Task<ExpenseDto> CreateAsync(CreateExpenseRequest r, CancellationToken ct) { _ = await employees.GetByIdAsync(r.EmployeeId, ct) ?? throw new KeyNotFoundException("Employee not found."); if (r.Amount <= 0) throw new DomainException("Expense amount must be positive."); var count = await expenses.CountAsync(cancellationToken: ct); var x = new ExpenseClaim { TenantId = TenantId, EmployeeId = r.EmployeeId, ClaimNumber = $"EXP-{DateTime.UtcNow:yyyyMMdd}-{count + 1:00000}", Category = r.Category, ExpenseDate = r.ExpenseDate, Amount = r.Amount, Currency = r.Currency.ToUpperInvariant(), Description = r.Description, ReceiptStorageKey = r.ReceiptStorageKey }; await expenses.AddAsync(x, ct); await unitOfWork.SaveChangesAsync(ct); return Map(x); }
-    public async Task<ExpenseDto> SubmitAsync(Guid id, long version, CancellationToken ct) { var x = await expenses.GetByIdAsync(id, ct) ?? throw new KeyNotFoundException("Expense not found."); CheckVersion(x, version); if (x.Status != ExpenseStatus.Draft) throw new DomainException("Only draft expenses can be submitted."); x.Status = ExpenseStatus.Submitted; var employee = await employees.GetByIdAsync(x.EmployeeId, ct) ?? throw new KeyNotFoundException("Employee not found."); await notifications.QueueForPermissionAsync(Permissions.ExpensesManage, "Expense submitted", $"{employee.FullName} submitted {x.ClaimNumber} for {x.Amount:0.00} {x.Currency}.", "expense", "/expenses", ct); await unitOfWork.SaveChangesAsync(ct); return Map(x); }
+    public async Task<ExpenseDto> SubmitAsync(Guid id, long version, CancellationToken ct) { var x = await expenses.GetByIdAsync(id, ct) ?? throw new KeyNotFoundException("Expense not found."); CheckVersion(x, version); if (x.Status != ExpenseStatus.Draft) throw new DomainException("Only draft expenses can be submitted."); if (string.IsNullOrWhiteSpace(x.ReceiptStorageKey) && !await documents.AnyAsync(d => d.OwnerType == DocumentOwnerType.ExpenseClaim && d.OwnerId == x.Id && d.Category == "receipt", ct)) throw new DomainException("Attach at least one receipt or bill before submitting this expense claim."); x.Status = ExpenseStatus.Submitted; var employee = await employees.GetByIdAsync(x.EmployeeId, ct) ?? throw new KeyNotFoundException("Employee not found."); await notifications.QueueForPermissionAsync(Permissions.ExpensesManage, "Expense submitted", $"{employee.FullName} submitted {x.ClaimNumber} for {x.Amount:0.00} {x.Currency}.", "expense", "/expenses", ct); await unitOfWork.SaveChangesAsync(ct); return Map(x); }
     public async Task<ExpenseDto> ReviewAsync(Guid id, ReviewExpenseRequest r, CancellationToken ct) { var x = await expenses.GetByIdAsync(id, ct) ?? throw new KeyNotFoundException("Expense not found."); CheckVersion(x, r.Version); if (x.Status != ExpenseStatus.Submitted) throw new DomainException("Only submitted expenses can be reviewed."); x.Status = r.Approve ? ExpenseStatus.Approved : ExpenseStatus.Rejected; x.ReviewedBy = user.UserId; await notifications.QueueForEmployeesAsync([x.EmployeeId], $"Expense {x.Status.ToString().ToLowerInvariant()}", $"Your expense claim {x.ClaimNumber} was {x.Status.ToString().ToLowerInvariant()}.", "expense", "/my-services", ct); await unitOfWork.SaveChangesAsync(ct); return Map(x); }
     public async Task<PagedResult<ExpenseDto>> SearchAsync(PagedRequest r, Guid? employeeId, ExpenseStatus? status, CancellationToken ct) { System.Linq.Expressions.Expression<Func<ExpenseClaim, bool>> p = x => (!employeeId.HasValue || x.EmployeeId == employeeId) && (!status.HasValue || x.Status == status); var total = await expenses.CountAsync(p, ct); var rows = await expenses.ListAsync(p, q => q.OrderByDescending(x => x.ExpenseDate), r.Skip, r.SafePageSize, ct); return new(rows.Select(Map).ToArray(), r.SafePage, r.SafePageSize, total); }
     private static ExpenseDto Map(ExpenseClaim x) => new(x.Id, x.EmployeeId, x.ClaimNumber, x.Category, x.ExpenseDate, x.Amount, x.Currency, x.Description, x.Status, x.Version);

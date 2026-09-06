@@ -142,6 +142,32 @@
                       @case ('number') {
                         <b>{{ +(value(row, column.key) ?? 0) | number: '1.0-2' }}</b>
                       }
+                      @case ('date-only') {
+                        <span>{{ dateValue(row, column.key) ? (dateValue(row, column.key) | date: 'd MMM yyyy') : '—' }}</span>
+                      }
+                      @case ('datetime') {
+                        <span>{{ dateValue(row, column.key) ? (dateValue(row, column.key) | date: 'd MMM yyyy, h:mm a') : '—' }}</span>
+                      }
+                      @case ('time') {
+                        <span>{{ display(value(row, column.key), column.key).slice(0, 5) }}</span>
+                      }
+                      @case ('duration') {
+                        <b>{{ duration(value(row, column.key)) }}</b>
+                      }
+                      @case ('minutes') {
+                        <span>{{ minutes(value(row, column.key)) }}</span>
+                      }
+                      @case ('attendance-map') {
+                        <button
+                          mat-stroked-button
+                          class="location-button"
+                          [disabled]="!hasAttendanceLocation(row)"
+                          (click)="openAttendanceLocations(row)"
+                        >
+                          <mat-icon>location_on</mat-icon>
+                          {{ hasAttendanceLocation(row) ? 'View locations' : 'Not captured' }}
+                        </button>
+                      }
                       @default {
                         <span
                           class="cell-value"
@@ -218,6 +244,7 @@
         @for (field of currentAction()?.fields ?? []; track field.key) {
           <div
             class="field"
+            [class.hidden-field]="field.hidden"
             [class.wide]="
               field.type === 'textarea' || field.type === 'checkbox' || field.type === 'multiselect'
             "
@@ -233,11 +260,14 @@
                 </select>
               }
               @case ('multiselect') {
-                <select [formControlName]="field.key" multiple size="5">
-                  @for (item of optionsFor(field); track item.value) {
-                    <option [ngValue]="item.value">{{ item.label }}</option>
-                  }
-                </select>
+                <details class="multi-select-dropdown">
+                  <summary>{{ multiselectLabel(field) }}</summary>
+                  <div class="multi-select-options">
+                    @for (item of optionsFor(field); track item.value) {
+                      <label><input type="checkbox" [checked]="isOptionSelected(field.key, item.value)" (change)="toggleOption(field.key, item.value)" /><span>{{ item.label }}</span></label>
+                    }
+                  </div>
+                </details>
               }
               @case ('textarea') {
                 <textarea
@@ -248,7 +278,7 @@
               @case ('checkbox') {
                 <label class="checkbox-field"
                   ><input type="checkbox" [formControlName]="field.key" /><span
-                    >Enable this option</span
+                    >{{ field.checkboxLabel ?? 'Enabled' }}</span
                   ></label
                 >
               }
@@ -269,6 +299,9 @@
             }
           </div>
         }
+        @if (form.get('officeStartsAt') && form.get('officeEndsAt')) {
+          <div class="derived-work-time wide"><span>Total work hours</span><strong>{{ attendanceDuration() }}</strong><small>Automatically calculated from office start and end time.</small></div>
+        }
       </div>
     </form>
     <div class="drawer-actions">
@@ -282,6 +315,70 @@
       </button>
     </div>
   </aside>
+}
+
+@if (locationDialogOpen()) {
+  <div class="map-dialog-overlay" (click)="closeAttendanceLocations()">
+    <section
+      class="map-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="location-title"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="map-dialog-head">
+        <div>
+          <div class="eyebrow">Attendance locations</div>
+          <h2 id="location-title">Check-in and check-out</h2>
+          <p>
+            {{ display(locationRow()?.['employeeId'], 'employeeId') }} ·
+            {{ dateValue(locationRow() ?? {}, 'workDate') | date: 'd MMM yyyy' }}
+          </p>
+        </div>
+        <button mat-icon-button (click)="closeAttendanceLocations()" aria-label="Close location dialog">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      <div class="map-grid">
+        <article class="map-panel">
+          <div class="map-panel-title">
+            <mat-icon>login</mat-icon>
+            <div><b>Check-in location</b><span>{{ locationText('in') }}</span><small>{{ locationAccuracy('in') }}</small></div>
+          </div>
+          @if (checkInMapUrl(); as url) {
+            <iframe [src]="url" title="Check-in location map" loading="lazy"></iframe>
+          } @else {
+            <div class="map-empty"><mat-icon>location_off</mat-icon><span>Check-in location was not captured.</span></div>
+          }
+        </article>
+        <article class="map-panel">
+          <div class="map-panel-title">
+            <mat-icon>logout</mat-icon>
+            <div><b>Check-out location</b><span>{{ locationText('out') }}</span><small>{{ locationAccuracy('out') }}</small></div>
+          </div>
+          @if (checkOutMapUrl(); as url) {
+            <iframe [src]="url" title="Check-out location map" loading="lazy"></iframe>
+          } @else {
+            <div class="map-empty"><mat-icon>location_off</mat-icon><span>Check-out location was not captured.</span></div>
+          }
+        </article>
+      </div>
+    </section>
+  </div>
+}
+
+@if (documentDialogOpen()) {
+  <div class="document-dialog-overlay" (click)="closeDocuments()">
+    <section class="document-dialog" role="dialog" aria-modal="true" aria-labelledby="document-dialog-title" (click)="$event.stopPropagation()">
+      <div class="document-dialog-head">
+        <div><div class="eyebrow">Record documents</div><h2 id="document-dialog-title">{{ documentLabel() }}</h2><p>{{ documentReadonly() ? 'View supporting files attached to this record.' : 'Upload and manage supporting files for this record.' }}</p></div>
+        <button mat-icon-button (click)="closeDocuments()" aria-label="Close document dialog"><mat-icon>close</mat-icon></button>
+      </div>
+      <div class="document-dialog-body">
+        <app-document [ownerType]="documentOwnerType()" [ownerId]="documentOwnerId()" [category]="documentCategory()" [label]="documentLabel()" [readonly]="documentReadonly()" [maxFiles]="documentMaxFiles()" [replaceMode]="documentReplaceMode()" [allowedExtensions]="documentAllowedExtensions()" />
+      </div>
+    </section>
+  </div>
 }
 
 @if (detailOpen()) {

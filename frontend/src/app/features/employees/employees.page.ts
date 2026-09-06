@@ -6,10 +6,11 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { ActivatedRoute } from '@angular/router';
-import { finalize, forkJoin } from 'rxjs';
+import { ActivatedRoute, Router } from '@angular/router';
+import { finalize, forkJoin, map, of, switchMap } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
+import { DocumentService } from '../../core/document.service';
 import { Employee, PagedResult } from '../../core/models';
 
 interface Lookup {
@@ -41,6 +42,8 @@ export class EmployeesPage implements OnInit {
   private readonly api = inject(ApiService);
   private readonly fb = inject(FormBuilder);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly documents = inject(DocumentService);
   readonly auth = inject(AuthService);
   readonly data = signal<PagedResult<Employee>>({
     items: [],
@@ -68,6 +71,8 @@ export class EmployeesPage implements OnInit {
   readonly locations = signal<Lookup[]>([]);
   readonly managers = signal<Lookup[]>([]);
   readonly roles = signal<RoleLookup[]>([]);
+  readonly profilePhoto = signal<File | null>(null);
+  readonly profilePhotoPreview = signal<string | null>(null);
   readonly form = this.fb.nonNullable.group({
     employeeNumber: ['', Validators.required],
     firstName: ['', Validators.required],
@@ -117,6 +122,7 @@ export class EmployeesPage implements OnInit {
   }
 
   openCreate(): void {
+    this.clearProfilePhoto();
     this.editing.set(null);
     this.error.set('');
     this.form.reset({
@@ -140,6 +146,7 @@ export class EmployeesPage implements OnInit {
   }
 
   openEdit(employee: Employee): void {
+    this.clearProfilePhoto();
     const parts = employee.fullName.trim().split(/\s+/);
     this.editing.set(employee);
     this.error.set('');
@@ -164,8 +171,7 @@ export class EmployeesPage implements OnInit {
   }
 
   openDetails(employee: Employee): void {
-    this.selected.set(employee);
-    this.detailOpen.set(true);
+    void this.router.navigate(['/employees', employee.id]);
   }
   openAccount(employee: Employee): void {
     this.accountEmployee.set(employee);
@@ -269,19 +275,54 @@ export class EmployeesPage implements OnInit {
           baseSalary: Number(raw.baseSalary),
           salaryCurrency: raw.salaryCurrency,
         });
-    request.pipe(finalize(() => this.saving.set(false))).subscribe({
+    const selectedPhoto = this.profilePhoto();
+    request.pipe(
+      switchMap((employee) => !editing && selectedPhoto
+        ? this.documents.upload('Employee', employee.id, 'profile', selectedPhoto, true).pipe(map(() => employee))
+        : of(employee)),
+      finalize(() => this.saving.set(false)),
+    ).subscribe({
       next: () => {
         this.drawerOpen.set(false);
+        this.clearProfilePhoto();
         this.success.set(
           editing ? 'Employee updated successfully.' : 'Employee created successfully.',
         );
         this.load(this.data().page);
       },
-      error: (error: HttpErrorResponse) =>
-        this.error.set(
-          error.error?.detail ?? `Unable to ${editing ? 'update' : 'create'} employee.`,
-        ),
+      error: (error: HttpErrorResponse) => {
+        if (!editing && selectedPhoto) {
+          this.drawerOpen.set(false);
+          this.clearProfilePhoto();
+          this.error.set(error.error?.detail ?? 'Employee was saved, but the profile photo could not be uploaded.');
+          this.load(this.data().page);
+          return;
+        }
+        this.error.set(error.error?.detail ?? `Unable to ${editing ? 'update' : 'create'} employee.`);
+      },
     });
+  }
+
+  selectProfilePhoto(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) {
+      this.error.set('Profile photos must be JPG, PNG, WebP, or AVIF images.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      this.error.set('Profile photos cannot be larger than 5 MB.');
+      return;
+    }
+    this.clearProfilePhoto();
+    this.profilePhoto.set(file);
+    this.profilePhotoPreview.set(URL.createObjectURL(file));
+  }
+
+  removeProfilePhoto(): void {
+    this.clearProfilePhoto();
   }
 
   deleteEmployee(employee: Employee): void {
@@ -381,5 +422,12 @@ export class EmployeesPage implements OnInit {
       this.api
         .get<RoleLookup[]>('/identity/roles')
         .subscribe({ next: (roles) => this.roles.set(roles) });
+  }
+
+  private clearProfilePhoto(): void {
+    const preview = this.profilePhotoPreview();
+    if (preview) URL.revokeObjectURL(preview);
+    this.profilePhoto.set(null);
+    this.profilePhotoPreview.set(null);
   }
 }

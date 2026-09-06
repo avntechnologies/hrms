@@ -207,7 +207,7 @@ textarea:focus-visible {
   max-width: 1600px;
   margin: 0 auto;
   padding: 28px 32px 48px;
-  animation: page-enter 180ms ease-out both;
+  animation: page-enter 180ms ease-out;
 }
 
 @keyframes page-enter {

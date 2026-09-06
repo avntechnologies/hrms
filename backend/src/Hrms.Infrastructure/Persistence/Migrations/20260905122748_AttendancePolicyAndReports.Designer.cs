@@ -3,6 +3,7 @@ using System;
 using Hrms.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hrms.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(HrmsDbContext))]
-    partial class HrmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260905122748_AttendancePolicyAndReports")]
+    partial class AttendancePolicyAndReports
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -222,9 +225,6 @@ namespace Hrms.Infrastructure.Persistence.Migrations
                     b.Property<TimeOnly>("OfficeStartsAt")
                         .HasColumnType("time without time zone");
 
-                    b.Property<bool>("RequireLocationCapture")
-                        .HasColumnType("boolean");
-
                     b.Property<int>("RequiredMinutesPerDay")
                         .HasColumnType("integer");
 
@@ -316,17 +316,11 @@ namespace Hrms.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int?>("EarlyDepartureGraceMinutes")
-                        .HasColumnType("integer");
-
                     b.Property<Guid>("EmployeeId")
                         .HasColumnType("uuid");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
-
-                    b.Property<int?>("LateGraceMinutes")
-                        .HasColumnType("integer");
 
                     b.Property<string>("Notes")
                         .HasColumnType("text");
@@ -334,15 +328,6 @@ namespace Hrms.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("OvertimeHours")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
-
-                    b.Property<int?>("RequiredMinutes")
-                        .HasColumnType("integer");
-
-                    b.Property<TimeOnly?>("ScheduledEndAt")
-                        .HasColumnType("time without time zone");
-
-                    b.Property<TimeOnly?>("ScheduledStartAt")
-                        .HasColumnType("time without time zone");
 
                     b.Property<string>("Source")
                         .HasColumnType("text");

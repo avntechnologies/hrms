@@ -143,6 +143,18 @@ public sealed class DocumentService(
             throw new DomainException("This file type is not supported.");
 
         var normalizedCategory = NormalizeCategory(category);
+        if (ownerType is DocumentOwnerType.Employee or DocumentOwnerType.User && normalizedCategory == "profile")
+        {
+            var allowedProfileExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ".jpg", ".jpeg", ".png", ".webp", ".avif"
+            };
+            if (!allowedProfileExtensions.Contains(extension))
+                throw new DomainException("Profile photos must be JPG, PNG, WebP, or AVIF images.");
+            if (sizeBytes > 5 * 1024 * 1024)
+                throw new DomainException("Profile photos cannot be larger than 5 MB.");
+            replace = true;
+        }
         var key = $"{TenantId:N}/{ownerType.ToString().ToLowerInvariant()}/{ownerId:N}/{Guid.NewGuid():N}{extension}";
         await storage.SaveAsync(key, content, ct);
 
@@ -195,6 +207,7 @@ public sealed class DocumentService(
                 if (ownerId != currentUser.EmployeeId && !currentUser.HasPermission(write ? Permissions.EmployeesManage : Permissions.EmployeesRead)) Deny();
                 break;
             case DocumentOwnerType.WorkItem:
+                if (!currentUser.HasPermission(Permissions.WorkRead)) Deny();
                 var item = await workItems.GetByIdAsync(ownerId, ct) ?? throw new KeyNotFoundException("Work item not found.");
                 if (!currentUser.HasPermission(Permissions.WorkManage))
                 {
@@ -205,11 +218,21 @@ public sealed class DocumentService(
                 break;
             case DocumentOwnerType.LeaveRequest:
                 var leave = await leaveRequests.GetByIdAsync(ownerId, ct) ?? throw new KeyNotFoundException("Leave request not found.");
-                if (leave.EmployeeId != currentUser.EmployeeId && !currentUser.HasPermission(Permissions.LeaveManage)) Deny();
+                var leaveEmployee = await employees.GetByIdAsync(leave.EmployeeId, ct) ?? throw new KeyNotFoundException("Employee not found.");
+                var ownsLeave = leave.EmployeeId == currentUser.EmployeeId;
+                var managesLeave = currentUser.EmployeeId.HasValue && leaveEmployee.ManagerId == currentUser.EmployeeId && currentUser.HasPermission(Permissions.TeamRead);
+                if (!ownsLeave && !currentUser.HasPermission(Permissions.LeaveManage) && !managesLeave) Deny();
+                if (write && !ownsLeave && !currentUser.HasPermission(Permissions.LeaveManage)) Deny();
+                if (write && leave.Status != LeaveRequestStatus.Pending) throw new DomainException("Documents cannot be changed after a leave request has been finalized.");
                 break;
             case DocumentOwnerType.ExpenseClaim:
                 var expense = await expenses.GetByIdAsync(ownerId, ct) ?? throw new KeyNotFoundException("Expense claim not found.");
-                if (expense.EmployeeId != currentUser.EmployeeId && !currentUser.HasPermission(Permissions.ExpensesManage)) Deny();
+                var expenseEmployee = await employees.GetByIdAsync(expense.EmployeeId, ct) ?? throw new KeyNotFoundException("Employee not found.");
+                var ownsExpense = expense.EmployeeId == currentUser.EmployeeId;
+                var managesExpense = currentUser.EmployeeId.HasValue && expenseEmployee.ManagerId == currentUser.EmployeeId && currentUser.HasPermission(Permissions.TeamRead);
+                if (!ownsExpense && !currentUser.HasPermission(Permissions.ExpensesManage) && !managesExpense) Deny();
+                if (write && !ownsExpense && !currentUser.HasPermission(Permissions.ExpensesManage)) Deny();
+                if (write && expense.Status != ExpenseStatus.Draft) throw new DomainException("Receipts cannot be changed after an expense claim has been submitted.");
                 break;
             case DocumentOwnerType.Candidate:
                 _ = await candidates.GetByIdAsync(ownerId, ct) ?? throw new KeyNotFoundException("Candidate not found.");

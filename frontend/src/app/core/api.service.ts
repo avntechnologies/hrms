@@ -43,11 +43,13 @@ export class ApiService {
 
   get<T>(
     path: string,
-    params?: Record<string, string | number | boolean | undefined>,
+    params?: Record<string, string | number | boolean | null | undefined>,
   ): Observable<T> {
     let httpParams = new HttpParams();
     Object.entries(params ?? {}).forEach(([key, value]) => {
-      if (value !== undefined && value !== '') httpParams = httpParams.set(key, String(value));
+      if (value === undefined || value === null) return;
+      const normalized = typeof value === 'string' ? value.trim() : value;
+      if (normalized !== '') httpParams = httpParams.set(key, String(normalized));
     });
     return this.http.get<T>(`${this.baseUrl}${path}`, { params: httpParams });
   }

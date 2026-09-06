@@ -180,6 +180,11 @@ public sealed class AttendanceRecord : TenantEntity
     public decimal OvertimeHours { get; set; }
     public string? Source { get; set; }
     public string? Notes { get; set; }
+    public TimeOnly? ScheduledStartAt { get; set; }
+    public TimeOnly? ScheduledEndAt { get; set; }
+    public int? RequiredMinutes { get; set; }
+    public int? LateGraceMinutes { get; set; }
+    public int? EarlyDepartureGraceMinutes { get; set; }
     public decimal? ClockInLatitude { get; set; }
     public decimal? ClockInLongitude { get; set; }
     public decimal? ClockInAccuracyMeters { get; set; }
@@ -453,6 +458,17 @@ public sealed class WorkItem : TenantEntity
     public string LabelsCsv { get; set; } = string.Empty;
     public WorkItemResolution? Resolution { get; set; }
     public DateTimeOffset? ResolvedAt { get; set; }
+}
+
+public sealed class AttendancePolicy : TenantEntity
+{
+    public TimeOnly OfficeStartsAt { get; set; } = new(9, 30);
+    public TimeOnly OfficeEndsAt { get; set; } = new(18, 30);
+    public int RequiredMinutesPerDay { get; set; } = 540;
+    public int LateGraceMinutes { get; set; } = 0;
+    public int EarlyDepartureGraceMinutes { get; set; } = 0;
+    public string WorkingDaysCsv { get; set; } = "Monday,Tuesday,Wednesday,Thursday,Friday";
+    public bool RequireLocationCapture { get; set; } = true;
 }
 
 public sealed class WorkItemAssignee : TenantEntity

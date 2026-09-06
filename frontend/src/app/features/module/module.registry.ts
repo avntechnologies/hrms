@@ -34,6 +34,7 @@ const versionField: FormFieldDefinition = {
   required: true,
   sourceKey: 'version',
   help: 'Used to prevent overwriting a newer update.',
+  hidden: true,
 };
 const approveFields: FormFieldDefinition[] = [
   {
@@ -164,6 +165,9 @@ export const MODULES: Record<string, ModuleDefinition> = {
             options: options('Pending', 'Approved', 'Rejected', 'Cancelled'),
           },
         ],
+        rowActions: [{
+          label: 'Supporting documents', icon: 'attach_file', method: 'documents', documentOwnerType: 'LeaveRequest', documentCategory: 'supporting-document', documentLabel: 'Leave supporting documents', documentMaxFiles: 10, documentReadonlyStatuses: ['Approved', 'Rejected', 'Cancelled'], documentAllowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'],
+        }],
       },
       {
         label: 'Leave balances',
@@ -178,6 +182,54 @@ export const MODULES: Record<string, ModuleDefinition> = {
           { key: 'available', label: 'Available', type: 'number' },
         ],
         filters: [{ key: 'year', label: 'Year', type: 'number' }],
+      },
+      {
+        label: 'My attendance',
+        icon: 'schedule',
+        endpoint: '/me/attendance/report',
+        listShape: 'paged',
+        columns: [
+          { key: 'workDate', label: 'Date', type: 'date-only' },
+          { key: 'firstCheckIn', label: 'First check-in', type: 'datetime' },
+          { key: 'lastCheckOut', label: 'Last check-out', type: 'datetime' },
+          { key: 'sessionCount', label: 'Sessions', type: 'number' },
+          { key: 'totalHours', label: 'Worked', type: 'duration' },
+          { key: 'requiredHours', label: 'Scheduled', type: 'duration' },
+          { key: 'lateMinutes', label: 'Late arrival', type: 'minutes' },
+          { key: 'earlyDepartureMinutes', label: 'Early departure', type: 'minutes' },
+          { key: 'shortfallHours', label: 'Hours short', type: 'duration' },
+          { key: 'overtimeHours', label: 'Overtime', type: 'duration' },
+          { key: 'status', label: 'Attendance result', type: 'status' },
+        ],
+        filters: [
+          { key: 'from', label: 'From', type: 'date' },
+          { key: 'to', label: 'To', type: 'date' },
+        ],
+        emptyMessage: 'No scheduled attendance days fall within this range.',
+      },
+      {
+        label: 'My attendance summary',
+        icon: 'analytics',
+        endpoint: '/me/attendance/summary',
+        listShape: 'array',
+        columns: [
+          { key: 'from', label: 'Period start', type: 'date-only' },
+          { key: 'to', label: 'Period end', type: 'date-only' },
+          { key: 'scheduledDays', label: 'Scheduled days', type: 'number' },
+          { key: 'daysPresent', label: 'Days worked', type: 'number' },
+          { key: 'daysAbsent', label: 'Absent days', type: 'number' },
+          { key: 'daysOnLeave', label: 'Approved leave', type: 'number' },
+          { key: 'totalHours', label: 'Total worked', type: 'duration' },
+          { key: 'averageHours', label: 'Average worked day', type: 'duration' },
+          { key: 'lateDays', label: 'Late days', type: 'number' },
+          { key: 'earlyDepartureDays', label: 'Early-out days', type: 'number' },
+          { key: 'shortDays', label: 'Short days', type: 'number' },
+          { key: 'overtimeHours', label: 'Overtime', type: 'duration' },
+        ],
+        filters: [
+          { key: 'from', label: 'From', type: 'date' },
+          { key: 'to', label: 'To', type: 'date' },
+        ],
       },
       {
         label: 'Timesheets',
@@ -240,7 +292,6 @@ export const MODULES: Record<string, ModuleDefinition> = {
             defaultValue: 'INR',
           },
           { key: 'description', label: 'Description', type: 'textarea', required: true },
-          { key: 'receiptStorageKey', label: 'Receipt reference', type: 'text' },
         ],
         filters: [
           {
@@ -251,6 +302,9 @@ export const MODULES: Record<string, ModuleDefinition> = {
           },
         ],
         rowActions: [
+          {
+            label: 'Receipts and bills', icon: 'receipt_long', method: 'documents', documentOwnerType: 'ExpenseClaim', documentCategory: 'receipt', documentLabel: 'Receipts and bills', documentMaxFiles: 10, documentReadonlyStatuses: ['Submitted', 'Approved', 'Rejected', 'Reimbursed'], documentAllowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+          },
           {
             label: 'Submit for approval',
             icon: 'send',
@@ -435,6 +489,9 @@ export const MODULES: Record<string, ModuleDefinition> = {
         ],
         rowActions: [
           {
+            label: 'Supporting documents', icon: 'attach_file', method: 'documents', documentOwnerType: 'LeaveRequest', documentCategory: 'supporting-document', documentLabel: 'Leave supporting documents', documentReadonly: true, documentMaxFiles: 10, documentAllowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'],
+          },
+          {
             label: 'Review leave',
             icon: 'approval',
             method: 'put',
@@ -516,6 +573,9 @@ export const MODULES: Record<string, ModuleDefinition> = {
           },
         ],
         rowActions: [
+          {
+            label: 'View receipts', icon: 'receipt_long', method: 'documents', documentOwnerType: 'ExpenseClaim', documentCategory: 'receipt', documentLabel: 'Receipts and bills', documentReadonly: true, documentMaxFiles: 10, documentAllowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+          },
           {
             label: 'Review expense',
             icon: 'approval',
@@ -721,6 +781,9 @@ export const MODULES: Record<string, ModuleDefinition> = {
         ],
         rowActions: [
           {
+            label: 'Supporting documents', icon: 'attach_file', method: 'documents', documentOwnerType: 'LeaveRequest', documentCategory: 'supporting-document', documentLabel: 'Leave supporting documents', documentReadonlyStatuses: ['Approved', 'Rejected', 'Cancelled'], documentMaxFiles: 10, documentAllowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'],
+          },
+          {
             label: 'Review request',
             icon: 'approval',
             method: 'put',
@@ -812,40 +875,28 @@ export const MODULES: Record<string, ModuleDefinition> = {
     title: 'Attendance',
     eyebrow: 'Workforce · Time & presence',
     icon: 'schedule',
-    description: 'Clock employees in and out and review attendance for a chosen period.',
+    description: 'Review punch sessions, attendance outcomes, exceptions and company attendance policy.',
     views: [
       {
-        label: 'Attendance records',
+        label: 'Punch sessions',
         endpoint: '/attendance',
         listShape: 'paged',
         createEndpoint: '/attendance/clock-in',
-        createLabel: 'Clock in',
+        createLabel: 'Add manual check-in',
         columns: [
           { key: 'employeeId', label: 'Employee' },
-          { key: 'workDate', label: 'Work date', type: 'date' },
-          { key: 'clockedInAt', label: 'Clock in', type: 'date' },
-          { key: 'clockInAddress', label: 'Clock-in coordinates' },
-          { key: 'clockInIpAddress', label: 'Clock-in IP' },
-          { key: 'clockInUserAgent', label: 'Clock-in device' },
-          { key: 'clockedOutAt', label: 'Clock out', type: 'date' },
-          { key: 'clockOutAddress', label: 'Clock-out coordinates' },
-          { key: 'clockOutIpAddress', label: 'Clock-out IP' },
-          { key: 'clockOutUserAgent', label: 'Clock-out device' },
-          { key: 'workHours', label: 'Hours', type: 'number' },
-          { key: 'overtimeHours', label: 'Overtime', type: 'number' },
-          { key: 'status', label: 'Status', type: 'status' },
+          { key: 'workDate', label: 'Attendance date', type: 'date-only' },
+          { key: 'clockedInAt', label: 'Check-in time', type: 'datetime' },
+          { key: 'clockedOutAt', label: 'Check-out time', type: 'datetime' },
+          { key: 'workHours', label: 'Session duration', type: 'duration' },
+          { key: 'source', label: 'Entry method' },
+          { key: 'sessionState', label: 'Session status', type: 'status' },
+          { key: 'attendanceLocation', label: 'Captured location', type: 'attendance-map' },
         ],
         fields: [
           employeeField(),
-          { key: 'timestamp', label: 'Timestamp', type: 'datetime-local' },
-          {
-            key: 'source',
-            label: 'Source',
-            type: 'select',
-            options: options('web', 'mobile', 'kiosk'),
-            defaultValue: 'web',
-          },
-          { key: 'notes', label: 'Notes', type: 'textarea' },
+          { key: 'timestamp', label: 'Check-in date and time', type: 'datetime-local', required: true },
+          { key: 'notes', label: 'Reason for manual entry', type: 'textarea', required: true, help: 'Required for audit history. Explain why HR is recording this entry.' },
         ],
         filters: [
           { key: 'employeeId', label: 'Employee', type: 'select', ...employees },
@@ -854,31 +905,105 @@ export const MODULES: Record<string, ModuleDefinition> = {
         ],
         rowActions: [
           {
-            label: 'Clock out employee',
+            label: 'Add manual check-out',
             icon: 'logout',
             method: 'post',
             path: '/attendance/clock-out',
             fields: [
-              employeeField('employeeId', 'Employee'),
-              { key: 'timestamp', label: 'Timestamp', type: 'datetime-local' },
-              {
-                key: 'source',
-                label: 'Source',
-                type: 'select',
-                options: options('web', 'mobile', 'kiosk'),
-                defaultValue: 'web',
-              },
-              { key: 'notes', label: 'Notes', type: 'textarea' },
+              { key: 'employeeId', label: 'Employee', type: 'text', required: true, sourceKey: 'employeeId', hidden: true },
+              { key: 'timestamp', label: 'Check-out date and time', type: 'datetime-local', required: true },
+              { key: 'notes', label: 'Reason for manual entry', type: 'textarea', required: true, help: 'Required for audit history. Explain why HR is recording this entry.' },
             ],
+            visibleField: 'sessionState',
+            visibleValues: ['In progress'],
           },
         ],
       },
+      {
+        label: 'Daily attendance',
+        icon: 'summarize',
+        endpoint: '/attendance/report',
+        listShape: 'paged',
+        columns: [
+          { key: 'employeeName', label: 'Employee' },
+          { key: 'workDate', label: 'Date', type: 'date-only' },
+          { key: 'firstCheckIn', label: 'First check-in', type: 'datetime' },
+          { key: 'lastCheckOut', label: 'Last check-out', type: 'datetime' },
+          { key: 'sessionCount', label: 'Sessions', type: 'number' },
+          { key: 'totalHours', label: 'Worked', type: 'duration' },
+          { key: 'requiredHours', label: 'Scheduled', type: 'duration' },
+          { key: 'lateMinutes', label: 'Late arrival', type: 'minutes' },
+          { key: 'earlyDepartureMinutes', label: 'Early departure', type: 'minutes' },
+          { key: 'shortfallHours', label: 'Hours short', type: 'duration' },
+          { key: 'overtimeHours', label: 'Overtime', type: 'duration' },
+          { key: 'status', label: 'Attendance result', type: 'status' },
+        ],
+        filters: [
+          { key: 'employeeId', label: 'Employee', type: 'select', ...employees },
+          { key: 'from', label: 'From', type: 'date' },
+          { key: 'to', label: 'To', type: 'date' },
+        ],
+        emptyMessage: 'No scheduled attendance days fall within this range.',
+      },
+      {
+        label: 'Attendance summary',
+        icon: 'analytics',
+        endpoint: '/attendance/summary',
+        listShape: 'array',
+        columns: [
+          { key: 'employeeName', label: 'Employee' },
+          { key: 'from', label: 'Period start', type: 'date-only' },
+          { key: 'to', label: 'Period end', type: 'date-only' },
+          { key: 'scheduledDays', label: 'Scheduled days', type: 'number' },
+          { key: 'daysPresent', label: 'Days worked', type: 'number' },
+          { key: 'daysAbsent', label: 'Absent days', type: 'number' },
+          { key: 'daysOnLeave', label: 'Approved leave', type: 'number' },
+          { key: 'totalHours', label: 'Total worked', type: 'duration' },
+          { key: 'averageHours', label: 'Average worked day', type: 'duration' },
+          { key: 'lateDays', label: 'Late days', type: 'number' },
+          { key: 'earlyDepartureDays', label: 'Early-out days', type: 'number' },
+          { key: 'shortDays', label: 'Short days', type: 'number' },
+          { key: 'overtimeHours', label: 'Overtime', type: 'duration' },
+        ],
+        filters: [
+          { key: 'employeeId', label: 'Employee', type: 'select', ...employees },
+          { key: 'from', label: 'From', type: 'date' },
+          { key: 'to', label: 'To', type: 'date' },
+        ],
+      },
+      {
+        label: 'Attendance policy',
+        icon: 'rule',
+        endpoint: '/attendance/policy',
+        listShape: 'array',
+        columns: [
+          { key: 'officeStartsAt', label: 'Scheduled start', type: 'time' },
+          { key: 'officeEndsAt', label: 'Scheduled end', type: 'time' },
+          { key: 'totalWorkHours', label: 'Scheduled duration' },
+          { key: 'lateGraceMinutes', label: 'Arrival grace', type: 'minutes' },
+          { key: 'earlyDepartureGraceMinutes', label: 'Departure grace', type: 'minutes' },
+          { key: 'workingDays', label: 'Working days' },
+          { key: 'requireLocationCapture', label: 'Location required', type: 'status' },
+        ],
+        rowActions: [{
+          label: 'Edit attendance policy', icon: 'edit', method: 'put', path: '/attendance/policy',
+          fields: [
+            { key: 'officeStartsAt', label: 'Scheduled start time', type: 'time', required: true, sourceKey: 'officeStartsAt' },
+            { key: 'officeEndsAt', label: 'Scheduled end time', type: 'time', required: true, sourceKey: 'officeEndsAt' },
+            { key: 'lateGraceMinutes', label: 'Arrival grace period (minutes)', type: 'number', required: true, min: 0, sourceKey: 'lateGraceMinutes' },
+            { key: 'earlyDepartureGraceMinutes', label: 'Departure grace period (minutes)', type: 'number', required: true, min: 0, sourceKey: 'earlyDepartureGraceMinutes' },
+            { key: 'workingDays', label: 'Working days', type: 'multiselect', required: true, sourceKey: 'workingDays', options: options('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') },
+            { key: 'requireLocationCapture', label: 'Location verification', type: 'checkbox', sourceKey: 'requireLocationCapture', checkboxLabel: 'Require employees to share their location when checking in and out' },
+            versionField,
+          ],
+        }],
+      },
     ],
     highlights: metrics([
-      ['Time capture', 'Live', 'Web, mobile or kiosk', 'green'],
-      ['Overtime', 'Calculated', 'From clock events', 'violet'],
-      ['Filtering', 'Flexible', 'Employee and date range', 'blue'],
-      ['Integrity', 'Tracked', 'Tenant-scoped records', 'amber'],
+      ['Policy', 'Company-defined', 'Schedule, grace periods and working days', 'green'],
+      ['Multiple sessions', 'Supported', 'Breaks and split shifts remain auditable', 'violet'],
+      ['Exceptions', 'Calculated', 'Absence, late arrival and early departure', 'blue'],
+      ['Manual entries', 'Audited', 'Administrator reason is required', 'amber'],
     ]),
   },
   workforce: {
@@ -1208,7 +1333,6 @@ export const MODULES: Record<string, ModuleDefinition> = {
               { key: 'lastName', label: 'Last name', type: 'text', required: true },
               { key: 'email', label: 'Email', type: 'email', required: true },
               { key: 'phone', label: 'Phone', type: 'text' },
-              { key: 'resumeStorageKey', label: 'Resume storage key', type: 'text' },
               { key: 'source', label: 'Source', type: 'text' },
             ],
           },
@@ -1253,6 +1377,22 @@ export const MODULES: Record<string, ModuleDefinition> = {
         ],
       },
       {
+        label: 'Candidates',
+        endpoint: '/recruitment/candidates',
+        listShape: 'array',
+        columns: [
+          { key: 'firstName', label: 'First name' },
+          { key: 'lastName', label: 'Last name' },
+          { key: 'email', label: 'Email' },
+          { key: 'phone', label: 'Phone' },
+          { key: 'source', label: 'Source' },
+        ],
+        rowActions: [
+          { label: 'Resume', icon: 'description', method: 'documents', documentOwnerType: 'Candidate', documentCategory: 'resume', documentLabel: 'Candidate resume', documentMaxFiles: 1, documentReplaceMode: true, documentAllowedExtensions: ['pdf', 'doc', 'docx'] },
+          { label: 'Candidate documents', icon: 'folder', method: 'documents', documentOwnerType: 'Candidate', documentCategory: 'candidate-document', documentLabel: 'Candidate documents', documentMaxFiles: 15, documentAllowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'] },
+        ],
+      },
+      {
         label: 'Applications',
         endpoint: '/recruitment/jobs/{jobId}/applications',
         listShape: 'array',
@@ -1275,6 +1415,7 @@ export const MODULES: Record<string, ModuleDefinition> = {
         ],
         emptyMessage: 'Select a job opening to view its application pipeline.',
         rowActions: [
+          { label: 'Candidate documents', icon: 'folder', method: 'documents', documentOwnerType: 'Candidate', documentOwnerIdField: 'candidateId', documentCategory: 'candidate-document', documentLabel: 'Candidate documents', documentMaxFiles: 15, documentAllowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'] },
           {
             label: 'Move candidate',
             icon: 'move_up',
@@ -1521,7 +1662,6 @@ export const MODULES: Record<string, ModuleDefinition> = {
             defaultValue: 'INR',
           },
           { key: 'description', label: 'Description', type: 'textarea', required: true },
-          { key: 'receiptStorageKey', label: 'Receipt storage key', type: 'text' },
         ],
         filters: [
           { key: 'employeeId', label: 'Employee', type: 'select', ...employees },
@@ -1533,6 +1673,9 @@ export const MODULES: Record<string, ModuleDefinition> = {
           },
         ],
         rowActions: [
+          {
+            label: 'Receipts and bills', icon: 'receipt_long', method: 'documents', documentOwnerType: 'ExpenseClaim', documentCategory: 'receipt', documentLabel: 'Receipts and bills', documentMaxFiles: 10, documentReadonlyStatuses: ['Submitted', 'Approved', 'Rejected', 'Reimbursed'], documentAllowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+          },
           {
             label: 'Submit claim',
             icon: 'send',
@@ -1555,7 +1698,7 @@ export const MODULES: Record<string, ModuleDefinition> = {
     highlights: metrics([
       ['Claims', 'Employee-led', 'Create and submit', 'blue'],
       ['Approvals', 'Version-safe', 'Approve or reject', 'green'],
-      ['Receipts', 'Referenced', 'Storage-ready design', 'violet'],
+      ['Receipts', 'Attached', 'Bills and evidence stored with each claim', 'violet'],
       ['Status', '5 stages', 'Draft to reimbursed', 'amber'],
     ]),
   },

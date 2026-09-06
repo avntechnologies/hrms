@@ -10,6 +10,7 @@ public sealed class EmployeesController(IEmployeeService service) : ControllerBa
 {
     [HttpPost, Authorize(Policy = Permissions.EmployeesManage)] public async Task<ActionResult<EmployeeDto>> Create(CreateEmployeeRequest request, CancellationToken ct) { var x = await service.CreateAsync(request, ct); return CreatedAtAction(nameof(Get), new { id = x.Id }, x); }
     [HttpGet("{id:guid}")] public Task<EmployeeDto> Get(Guid id, CancellationToken ct) => service.GetAsync(id, ct);
+    [HttpGet("{id:guid}/login-history")] public Task<IReadOnlyList<LoginHistoryDto>> LoginHistory(Guid id, [FromQuery] int take = 50, CancellationToken ct = default) => service.GetLoginHistoryAsync(id, take, ct);
     [HttpGet] public Task<PagedResult<EmployeeDto>> Search([FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] string? search = null, [FromQuery] EmploymentStatus? status = null, [FromQuery] Guid? departmentId = null, CancellationToken ct = default) => service.SearchAsync(new(page, pageSize, search), status, departmentId, ct);
     [HttpPut("{id:guid}"), Authorize(Policy = Permissions.EmployeesManage)] public Task<EmployeeDto> Update(Guid id, UpdateEmployeeRequest request, CancellationToken ct) => service.UpdateAsync(id, request, ct);
     [HttpDelete("{id:guid}"), Authorize(Policy = Permissions.EmployeesManage)] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { await service.DeleteAsync(id, ct); return NoContent(); }
@@ -43,7 +44,11 @@ public sealed class AttendanceController(IAttendanceService service) : Controlle
     [HttpPost("clock-in")] public Task<AttendanceDto> ClockIn(ClockRequest request, CancellationToken ct) => service.ClockInAsync(Enrich(request), ct);
     [HttpPost("clock-out")] public Task<AttendanceDto> ClockOut(ClockRequest request, CancellationToken ct) => service.ClockOutAsync(Enrich(request), ct);
     [HttpGet] public Task<PagedResult<AttendanceDto>> Search([FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] Guid? employeeId = null, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default) => service.SearchAsync(new(page, pageSize), employeeId, from, to, ct);
-    private ClockRequest Enrich(ClockRequest request) => request with { IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(), UserAgent = Request.Headers.UserAgent.ToString() };
+    [HttpGet("policy")] public Task<IReadOnlyList<AttendancePolicyDto>> Policy(CancellationToken ct) => service.GetPolicyAsync(ct);
+    [HttpPut("policy")] public Task<AttendancePolicyDto> UpdatePolicy(UpdateAttendancePolicyRequest request, CancellationToken ct) => service.UpdatePolicyAsync(request, ct);
+    [HttpGet("report")] public Task<PagedResult<DailyAttendanceReportDto>> Report([FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] Guid? employeeId = null, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default) => service.ReportAsync(new(page, pageSize), employeeId, from, to, ct);
+    [HttpGet("summary")] public Task<IReadOnlyList<AttendanceSummaryDto>> Summary([FromQuery] Guid? employeeId = null, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default) => service.SummaryAsync(employeeId, from, to, ct);
+    private ClockRequest Enrich(ClockRequest request) => request with { Source = "admin", IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(), UserAgent = Request.Headers.UserAgent.ToString() };
 }
 
 [ApiController, Route("api/v1/workforce"), Authorize(Policy = Permissions.WorkforceManage)]

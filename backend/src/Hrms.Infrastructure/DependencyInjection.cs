@@ -48,7 +48,7 @@ public static class DependencyInjection
                 {
                     var accessToken = context.Request.Query["access_token"];
                     if (!string.IsNullOrEmpty(accessToken)
-                        && context.HttpContext.Request.Path.StartsWithSegments("/hubs/notifications"))
+                        && context.HttpContext.Request.Path.StartsWithSegments("/hubs/notifications", StringComparison.Ordinal))
                         context.Token = accessToken;
                     return Task.CompletedTask;
                 }

@@ -286,9 +286,9 @@
     @if (detail(); as data) {
       <div class="drawer-head"><div><small>{{ data.item.projectKey }} · {{ data.item.type }}</small><h2>{{ data.item.key }}</h2></div><button mat-icon-button (click)="detailOpen.set(false)"><mat-icon>close</mat-icon></button></div>
       <div class="drawer-body detail-body">
-        <div class="detail-title"><h3>{{ data.item.summary }}</h3><button mat-stroked-button (click)="openEdit()"><mat-icon>edit</mat-icon>Edit</button></div>
+        <div class="detail-title"><h3>{{ data.item.summary }}</h3>@if (canEdit()) { <button mat-stroked-button (click)="openEdit()"><mat-icon>edit</mat-icon>Edit</button> }</div>
         <div class="detail-actions">
-          <button mat-stroked-button [matMenuTriggerFor]="statusMenu" [disabled]="!!actionBusy()">
+          <button mat-stroked-button [matMenuTriggerFor]="statusMenu" [disabled]="!!actionBusy() || !canTransition()">
             @if (actionBusy() === 'transition') {
               <mat-spinner diameter="16"></mat-spinner>
             } @else {
@@ -409,15 +409,15 @@
             <h4>Comments <span>{{ data.comments.length }}</span></h4>
             @if (canComment()) { <button mat-stroked-button type="button" (click)="openCommentDialog()"><mat-icon>add_comment</mat-icon>Add comment</button> }
           </div>
-          @for (comment of data.comments; track comment.id) { <article class="activity-entry"><span class="activity-avatar">{{ comment.authorName.slice(0, 1) }}</span><div><header><b>{{ comment.authorName }}</b><time>{{ comment.createdAt | date: 'd MMM, HH:mm' }}</time>@if (comment.canEdit) { <button mat-icon-button (click)="deleteComment(comment.id)" [disabled]="!!actionBusy()" aria-label="Delete comment">@if (actionBusy() === 'comment-' + comment.id) { <mat-spinner diameter="16"></mat-spinner> } @else { <mat-icon>delete</mat-icon> }</button> }</header><p>{{ comment.body }}</p></div></article> }
+          @for (comment of data.comments; track comment.id) { <article class="activity-entry"><span class="activity-avatar">{{ comment.authorName.slice(0, 1) }}</span><div><header><b>{{ comment.authorName }}</b><time>{{ comment.createdAt | date: 'd MMM, HH:mm' }}</time>@if (comment.canEdit && canComment()) { <button mat-icon-button (click)="deleteComment(comment.id)" [disabled]="!!actionBusy()" aria-label="Delete comment">@if (actionBusy() === 'comment-' + comment.id) { <mat-spinner diameter="16"></mat-spinner> } @else { <mat-icon>delete</mat-icon> }</button> }</header><p>{{ comment.body }}</p></div></article> }
         </section>
-        @if (canLog()) {
+        @if (canLog() || data.worklogs.length > 0) {
           <section class="activity-section">
             <div class="activity-section-head">
               <h4>Worklog <span>{{ data.worklogs.length }}</span></h4>
-              <button mat-stroked-button type="button" (click)="openWorklogDialog()"><mat-icon>timer</mat-icon>Log time</button>
+              @if (canLog()) { <button mat-stroked-button type="button" (click)="openWorklogDialog()"><mat-icon>timer</mat-icon>Log time</button> }
             </div>
-            @for (log of data.worklogs; track log.id) { <article class="worklog-entry"><div><b>{{ log.employeeName }}</b><span>{{ log.workDate | date: 'd MMM yyyy' }} · {{ log.description || 'Work logged' }}</span></div><strong>{{ formatMinutes(log.minutes) }}</strong>@if (log.canEdit) { <button mat-icon-button (click)="deleteWorklog(log.id)" [disabled]="!!actionBusy()" aria-label="Delete worklog">@if (actionBusy() === 'worklog-' + log.id) { <mat-spinner diameter="16"></mat-spinner> } @else { <mat-icon>delete</mat-icon> }</button> }</article> }
+            @for (log of data.worklogs; track log.id) { <article class="worklog-entry"><div><b>{{ log.employeeName }}</b><span>{{ log.workDate | date: 'd MMM yyyy' }} · {{ log.description || 'Work logged' }}</span></div><strong>{{ formatMinutes(log.minutes) }}</strong>@if (log.canEdit && canLog()) { <button mat-icon-button (click)="deleteWorklog(log.id)" [disabled]="!!actionBusy()" aria-label="Delete worklog">@if (actionBusy() === 'worklog-' + log.id) { <mat-spinner diameter="16"></mat-spinner> } @else { <mat-icon>delete</mat-icon> }</button> }</article> }
           </section>
         }
         <section class="activity-section"><h4>History</h4>@for (event of data.history; track event.id) { <div class="history-entry"><mat-icon>history</mat-icon><p><b>{{ event.actorName }}</b> {{ event.eventType.replace('_', ' ') }}@if (event.fieldName) { <span> {{ event.fieldName }} from <code>{{ event.beforeValue || 'none' }}</code> to <code>{{ event.afterValue || 'none' }}</code></span> }<time>{{ event.createdAt | date: 'd MMM, HH:mm' }}</time></p></div> }</section>

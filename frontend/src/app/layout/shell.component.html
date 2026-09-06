@@ -52,14 +52,14 @@
 
     <div class="sidebar-foot">
       <a
-        routerLink="/settings/themes"
+        routerLink="/settings"
         routerLinkActive="active"
-        [matTooltip]="collapsed() ? 'Appearance' : ''"
+        [matTooltip]="collapsed() ? 'Settings' : ''"
         (click)="mobile() && drawer.close()"
       >
-        <mat-icon>palette</mat-icon>
+        <mat-icon>settings</mat-icon>
         @if (!collapsed()) {
-          <span>Appearance</span>
+          <span>Settings</span>
         }
       </a>
     </div>
@@ -98,7 +98,7 @@
           </div>
           @for (item of notifications.feed().items; track item.id) {
             <button mat-menu-item class="notification-item" [class.unread]="!item.isRead" (click)="openNotification(item)">
-              <span class="notification-icon"><mat-icon>{{ item.kind === 'work' ? 'task_alt' : item.kind === 'leave' ? 'event_available' : 'notifications' }}</mat-icon></span>
+              <span class="notification-icon"><mat-icon>{{ notificationIcon(item.kind) }}</mat-icon></span>
               <span class="notification-copy"><strong>{{ item.title }}</strong><span>{{ item.message }}</span><small>{{ item.createdAt | date:'medium' }}</small></span>
             </button>
           } @empty {
@@ -156,8 +156,8 @@
           ><mat-icon>expand_more</mat-icon>
         </button>
         <mat-menu #userMenu="matMenu">
-          <button mat-menu-item routerLink="/settings/themes">
-            <mat-icon>palette</mat-icon>Appearance
+          <button mat-menu-item routerLink="/settings">
+            <mat-icon>settings</mat-icon>Settings
           </button>
           <button mat-menu-item (click)="auth.logout()"><mat-icon>logout</mat-icon>Sign out</button>
         </mat-menu>

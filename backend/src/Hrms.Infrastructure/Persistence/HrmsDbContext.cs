@@ -29,6 +29,7 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
     public DbSet<StoredDocument> StoredDocuments => Set<StoredDocument>();
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
     public DbSet<Shift> Shifts => Set<Shift>();
+    public DbSet<AttendancePolicy> AttendancePolicies => Set<AttendancePolicy>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<TimesheetEntry> TimesheetEntries => Set<TimesheetEntry>();
     public DbSet<Holiday> Holidays => Set<Holiday>();
@@ -78,7 +79,8 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
         modelBuilder.Entity<Department>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<Designation>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<Location>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
-        modelBuilder.Entity<AttendanceRecord>().HasIndex(x => new { x.TenantId, x.EmployeeId, x.WorkDate }).IsUnique();
+        modelBuilder.Entity<AttendanceRecord>().HasIndex(x => new { x.TenantId, x.EmployeeId, x.WorkDate });
+        modelBuilder.Entity<AttendancePolicy>().HasIndex(x => x.TenantId).IsUnique();
         modelBuilder.Entity<LeaveType>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<LeaveBalance>().HasIndex(x => new { x.TenantId, x.EmployeeId, x.LeaveTypeId, x.Year }).IsUnique();
         modelBuilder.Entity<PayrollRun>().HasIndex(x => new { x.TenantId, x.PeriodStart, x.PeriodEnd });

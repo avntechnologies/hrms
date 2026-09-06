@@ -512,7 +512,7 @@
   z-index: 1100;
   inset: 0;
 
-  padding: 24px;
+  padding: 20px 20px 20px 284px;
 
   background: rgb(9 18 30 / 0.62);
 
@@ -520,13 +520,17 @@
   place-items: center;
 }
 
+:host-context(.sidebar-collapsed) .preview-backdrop {
+  padding-left: 92px;
+}
+
 /* ========================================================================== */
 /* PREVIEW DIALOG                                                             */
 /* ========================================================================== */
 
 .preview-dialog {
-  width: min(1100px, 100%);
-  height: min(820px, 92dvh);
+  width: min(880px, 100%);
+  height: min(640px, calc(100dvh - 104px));
 
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -540,6 +544,17 @@
   grid-template-rows: 54px minmax(0, 1fr);
 
   overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+  .preview-backdrop {
+    padding: 16px;
+  }
+
+  .preview-dialog {
+    width: min(820px, 100%);
+    height: min(620px, calc(100dvh - 32px));
+  }
 }
 
 .preview-dialog > header {

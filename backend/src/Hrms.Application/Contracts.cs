@@ -22,6 +22,7 @@ public sealed record TenantDto(Guid Id, string Name, string Slug, TenantStatus S
 public sealed record LoginRequest(string TenantSlug, string Email, string Password);
 public sealed record RefreshRequest(string RefreshToken);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+public sealed record UpdateSelfProfileRequest(string? Phone);
 public sealed record TokenResponse(string AccessToken, string RefreshToken, DateTimeOffset ExpiresAt, UserDto User);
 public sealed record UserDto(Guid Id, Guid TenantId, Guid? EmployeeId, string Email, string DisplayName, IReadOnlyList<string> Roles, IReadOnlyList<string> Permissions);
 public sealed record CreateRoleRequest(string Name, IReadOnlyList<string> Permissions);
@@ -46,6 +47,7 @@ public sealed record EmployeeDto(
     DateOnly HireDate, EmploymentStatus Status, EmploymentType EmploymentType, Guid? DepartmentId,
     Guid? DesignationId, Guid? LocationId, Guid? ManagerId, decimal BaseSalary,
     string SalaryCurrency, Guid? UserId, long Version);
+public sealed record LoginHistoryDto(DateTimeOffset LoggedInAt, string? IpAddress, string? UserAgent);
 
 public sealed record CreateDepartmentRequest(string Name, string Code, Guid? ParentDepartmentId = null);
 public sealed record DepartmentDto(Guid Id, string Name, string Code, Guid? ParentDepartmentId, Guid? HeadEmployeeId, bool IsActive);
@@ -66,9 +68,19 @@ public sealed record ClockRequest(Guid EmployeeId, DateTimeOffset? Timestamp = n
     string? IpAddress = null, string? UserAgent = null);
 public sealed record SelfClockRequest(decimal? Latitude = null, decimal? Longitude = null, decimal? AccuracyMeters = null, string? Address = null, string Source = "web", string? Notes = null);
 public sealed record AttendanceDto(Guid Id, Guid EmployeeId, DateOnly WorkDate, DateTimeOffset? ClockedInAt, DateTimeOffset? ClockedOutAt,
-    AttendanceStatus Status, decimal WorkHours, decimal OvertimeHours, string? Source,
+    AttendanceStatus Status, string SessionState, decimal WorkHours, decimal OvertimeHours, string? Source, string? Notes,
     decimal? ClockInLatitude, decimal? ClockInLongitude, decimal? ClockInAccuracyMeters, string? ClockInAddress, string? ClockInIpAddress, string? ClockInUserAgent,
     decimal? ClockOutLatitude, decimal? ClockOutLongitude, decimal? ClockOutAccuracyMeters, string? ClockOutAddress, string? ClockOutIpAddress, string? ClockOutUserAgent, long Version);
+public sealed record AttendancePolicyDto(Guid? Id, TimeOnly OfficeStartsAt, TimeOnly OfficeEndsAt, string TotalWorkHours,
+    int LateGraceMinutes, int EarlyDepartureGraceMinutes, IReadOnlyList<string> WorkingDays, bool RequireLocationCapture, long Version);
+public sealed record UpdateAttendancePolicyRequest(TimeOnly OfficeStartsAt, TimeOnly OfficeEndsAt,
+    int LateGraceMinutes, int EarlyDepartureGraceMinutes, IReadOnlyList<string> WorkingDays, bool RequireLocationCapture, long Version = 0);
+public sealed record DailyAttendanceReportDto(Guid EmployeeId, string EmployeeName, DateOnly WorkDate, DateTimeOffset? FirstCheckIn, DateTimeOffset? LastCheckOut,
+    decimal TotalHours, decimal RequiredHours, int LateMinutes, int EarlyDepartureMinutes, decimal OvertimeHours,
+    decimal ShortfallHours, int SessionCount, string Status);
+public sealed record AttendanceSummaryDto(Guid EmployeeId, string EmployeeName, DateOnly From, DateOnly To, int ScheduledDays,
+    int DaysPresent, int DaysAbsent, int DaysOnLeave, decimal TotalHours, decimal AverageHours,
+    int LateDays, int EarlyDepartureDays, int ShortDays, decimal OvertimeHours);
 public sealed record CreateShiftRequest(string Name, TimeOnly StartsAt, TimeOnly EndsAt, int GraceMinutes = 0, bool IsNightShift = false);
 public sealed record ShiftDto(Guid Id, string Name, TimeOnly StartsAt, TimeOnly EndsAt, int GraceMinutes, bool IsNightShift);
 public sealed record CreateHolidayRequest(string Name, DateOnly Date, Guid? LocationId = null, bool IsOptional = false);
@@ -119,7 +131,7 @@ public sealed record AuditLogDto(Guid Id, DateTimeOffset CreatedAt, Guid? ActorU
 public sealed record SelfProfileDto(Guid EmployeeId, string EmployeeNumber, string FullName, string WorkEmail, string? Phone, DateOnly HireDate,
     EmploymentStatus Status, EmploymentType EmploymentType, Guid? DepartmentId, Guid? DesignationId, Guid? LocationId, Guid? ManagerId,
     string SalaryCurrency, decimal BaseSalary);
-public sealed record SelfDashboardDto(SelfProfileDto Profile, AttendanceDto? TodayAttendance, int PendingLeaveRequests, decimal AvailableLeaveDays,
+public sealed record SelfDashboardDto(SelfProfileDto Profile, AttendanceDto? TodayAttendance, decimal TodayTotalHours, int TodaySessionCount, bool RequireLocationCapture, int PendingLeaveRequests, decimal AvailableLeaveDays,
     int PendingTimesheets, int OpenExpenses, int TrainingDue, IReadOnlyList<AnnouncementDto> Announcements);
 public sealed record SelfLeaveRequest(Guid LeaveTypeId, DateOnly StartsOn, DateOnly EndsOn, decimal Days, string Reason);
 public sealed record SelfTimesheetRequest(DateOnly WorkDate, string Description, decimal Hours, string? ProjectCode = null);

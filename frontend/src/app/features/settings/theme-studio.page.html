@@ -2,14 +2,64 @@
   <div class="page-header">
     <div>
       <div class="eyebrow">Settings</div>
-      <h1 class="page-title">Appearance</h1>
+      <h1 class="page-title">Settings</h1>
       <p class="page-description">
-        Manage company identity and choose how the application looks on this browser.
+        Manage your profile, security, company identity, and application appearance.
       </p>
     </div>
   </div>
 
   <section class="theme-layout">
+    <article class="app-card settings-card profile-settings-card">
+        <div class="settings-head">
+          <div><h2>Personal profile</h2><p>Update your photo and personal contact information.</p></div>
+        </div>
+        <div class="profile-settings-layout">
+          <app-document
+            [ownerType]="profileOwnerType()"
+            [ownerId]="profileOwnerId()"
+            category="profile"
+            label="Profile photo"
+            [replaceMode]="true"
+            [maxFiles]="1"
+            [maxSizeMb]="5"
+            [showUploadButton]="false"
+            [compact]="true"
+            [allowedExtensions]="['jpg', 'jpeg', 'png', 'webp', 'avif']"
+            (documentsChanged)="profilePhotoChanged()"
+          />
+          <div class="personal-fields">
+            @if (profile(); as employee) {
+              <div class="field"><label>Full name</label><input [value]="employee.fullName" readonly /></div>
+              <div class="field"><label>Work email</label><input [value]="employee.workEmail" readonly /></div>
+              <div class="field"><label>Employee ID</label><input [value]="employee.employeeNumber" readonly /></div>
+              <div class="field"><label>Phone</label><input [ngModel]="phone()" (ngModelChange)="phone.set($event)" maxlength="40" /></div>
+              <div class="setting-actions profile-actions">
+                <button mat-raised-button class="primary-button" [disabled]="savingProfile()" (click)="saveProfile()">
+                  @if (savingProfile()) { <mat-spinner diameter="17" /> } @else { <mat-icon>save</mat-icon> } Save profile
+                </button>
+              </div>
+            } @else {
+              <div class="field"><label>Display name</label><input [value]="auth.user()?.displayName" readonly /></div>
+              <div class="field"><label>Account email</label><input [value]="auth.user()?.email" readonly /></div>
+              <p class="account-profile-note">Name and email are controlled by account administrators.</p>
+            }
+          </div>
+        </div>
+      </article>
+
+    @if (profile()) {
+      <article class="app-card settings-card security-card">
+        <div class="settings-head"><div><h2>Account security</h2><p>Change your password. All active refresh sessions will be revoked.</p></div></div>
+        <div class="password-grid">
+          <div class="field"><label>Current password</label><input type="password" autocomplete="current-password" [ngModel]="currentPassword()" (ngModelChange)="currentPassword.set($event)" /></div>
+          <div class="field"><label>New password</label><input type="password" autocomplete="new-password" [ngModel]="newPassword()" (ngModelChange)="newPassword.set($event)" /></div>
+          <div class="field"><label>Confirm new password</label><input type="password" autocomplete="new-password" [ngModel]="confirmPassword()" (ngModelChange)="confirmPassword.set($event)" /></div>
+        </div>
+        <div class="setting-actions"><button mat-raised-button class="primary-button" [disabled]="savingPassword() || !currentPassword() || !newPassword() || !confirmPassword()" (click)="changePassword()">@if (savingPassword()) { <mat-spinner diameter="17" /> } @else { <mat-icon>password</mat-icon> } Change password</button></div>
+      </article>
+    }
+
     @if (auth.hasPermission('identity.manage') && company.profile(); as profile) {
       <article class="app-card settings-card identity-card">
         <div class="settings-head">
@@ -55,7 +105,7 @@
       </article>
     }
 
-    <article class="app-card settings-card">
+    <article class="app-card settings-card appearance-card">
       <div class="settings-head">
         <div>
           <h2>Color theme</h2>

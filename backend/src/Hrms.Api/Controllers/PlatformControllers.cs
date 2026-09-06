@@ -7,7 +7,7 @@ namespace Hrms.Api.Controllers;
 [ApiController, Route("api/v1/auth")]
 public sealed class AuthController(IAuthService service) : ControllerBase
 {
-    [HttpPost("login"), AllowAnonymous] public Task<TokenResponse> Login(LoginRequest request, CancellationToken ct) => service.LoginAsync(request, ct);
+    [HttpPost("login"), AllowAnonymous] public Task<TokenResponse> Login(LoginRequest request, CancellationToken ct) => service.LoginAsync(request, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), ct);
     [HttpPost("refresh"), AllowAnonymous] public Task<TokenResponse> Refresh(RefreshRequest request, CancellationToken ct) => service.RefreshAsync(request, ct);
     [HttpPost("revoke"), Authorize] public async Task<IActionResult> Revoke(RefreshRequest request, CancellationToken ct) { await service.RevokeAsync(request, ct); return NoContent(); }
 }

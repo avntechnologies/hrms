@@ -94,11 +94,17 @@ export class WorkPage implements OnInit {
     this.projects().find((project) => project.id === this.selectedProjectId()),
   );
   readonly canManage = computed(() => this.auth.hasPermission('work.manage'));
-  readonly canCreate = computed(() => this.auth.hasPermission('work.create'));
-  readonly canAssign = computed(() => this.auth.hasPermission('work.assign'));
-  readonly canComment = computed(() => this.auth.hasPermission('work.comment'));
-  readonly canLog = computed(() => this.auth.hasPermission('work.log'));
-  readonly canAttach = computed(() => this.canManage() || this.canComment());
+  readonly currentAccess = computed(() => this.members().find(member => member.employeeId === this.auth.user()?.employeeId));
+  readonly actionAccess = computed(() => this.detailOpen() && !this.drawerOpen() ? this.detail()?.access : this.currentAccess());
+  readonly actionProject = computed(() => this.detailOpen() && !this.drawerOpen()
+    ? this.projects().find(project => project.id === this.detail()?.item.projectId) : this.selectedProject());
+  readonly canCreate = computed(() => !!this.selectedProject()?.isActive && this.auth.hasPermission('work.create') && (this.canManage() || !!this.currentAccess()?.canCreateItems));
+  readonly canEdit = computed(() => !!this.actionProject()?.isActive && this.auth.hasPermission('work.create') && (this.canManage() || !!this.actionAccess()?.canCreateItems));
+  readonly canAssign = computed(() => !!this.actionProject()?.isActive && this.auth.hasPermission('work.assign') && (this.canManage() || !!this.actionAccess()?.canAssignItems));
+  readonly canTransition = computed(() => !!this.actionProject()?.isActive && this.auth.hasPermission('work.transition') && (this.canManage() || !!this.actionAccess()?.canTransitionItems));
+  readonly canComment = computed(() => !!this.actionProject()?.isActive && this.auth.hasPermission('work.comment') && (this.canManage() || !!this.actionAccess()));
+  readonly canLog = computed(() => !!this.actionProject()?.isActive && this.auth.hasPermission('work.log') && (this.canManage() || !!this.actionAccess()?.canLogWork));
+  readonly canAttach = computed(() => !!this.actionProject()?.isActive && (this.canManage() || this.canComment()));
 
   @ViewChild('itemDocuments') private itemDocuments?: DocumentComponent;
 
@@ -193,6 +199,8 @@ export class WorkPage implements OnInit {
 
   loadMembers(): void {
     const projectId = this.selectedProjectId();
+    this.members.set([]);
+    this.memberDraft.set([]);
     if (!projectId) {
       this.members.set([]);
       this.memberDraft.set([]);
@@ -200,10 +208,12 @@ export class WorkPage implements OnInit {
     }
     this.api.get<WorkProjectMember[]>(`/work/projects/${projectId}/members`).subscribe({
       next: (members) => {
+        if (projectId !== this.selectedProjectId()) return;
         this.members.set(members);
         this.memberDraft.set(members.map((member) => ({ ...member })));
       },
       error: () => {
+        if (projectId !== this.selectedProjectId()) return;
         this.members.set([]);
         this.memberDraft.set([]);
       },

@@ -54,6 +54,11 @@ export class ShellComponent implements OnDestroy {
   private readonly documents = inject(DocumentService);
   private readonly breakpoint = inject(BreakpointObserver);
   private readonly router = inject(Router);
+  private readonly profilePhotoSubscription = this.documents.profilePhotoChanged$.subscribe(
+    (employeeId) => {
+      if (employeeId === (this.auth.user()?.employeeId ?? this.auth.user()?.id)) this.refreshProfilePhoto();
+    },
+  );
 
   readonly mobile = signal(false);
   readonly collapsed = signal(false);
@@ -177,16 +182,14 @@ export class ShellComponent implements OnDestroy {
       .observe([Breakpoints.Handset, Breakpoints.TabletPortrait])
       .subscribe((state) => this.mobile.set(state.matches));
     this.company.load().subscribe({ error: () => undefined });
-    const employeeId = this.auth.user()?.employeeId;
-    if (employeeId) this.documents.list('Employee', employeeId, 'profile').subscribe({
-      next: (items) => this.loadImage(items[0]?.id, this.profilePhotoUrl), error: () => undefined,
-    });
+    this.refreshProfilePhoto();
     this.refreshNotifications();
     this.notifications.connect();
   }
 
   ngOnDestroy(): void {
     this.notifications.disconnect();
+    this.profilePhotoSubscription.unsubscribe();
     this.revoke(this.companyLogoUrl());
     this.revoke(this.profilePhotoUrl());
   }
@@ -241,6 +244,16 @@ export class ShellComponent implements OnDestroy {
 
   private refreshNotifications(): void {
     this.notifications.load().subscribe({ error: () => undefined });
+  }
+
+  private refreshProfilePhoto(): void {
+    const user = this.auth.user();
+    const ownerId = user?.employeeId ?? user?.id;
+    if (!ownerId) return;
+    this.documents.list(user?.employeeId ? 'Employee' : 'User', ownerId, 'profile').subscribe({
+      next: (items) => this.loadImage(items[0]?.id, this.profilePhotoUrl),
+      error: () => undefined,
+    });
   }
 
   private loadImage(id: string | undefined, target: { set(value: string | null): void; (): string | null }): void {

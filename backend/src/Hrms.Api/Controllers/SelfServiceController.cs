@@ -9,10 +9,13 @@ namespace Hrms.Api.Controllers;
 public sealed class SelfServiceController(ISelfService service) : ControllerBase
 {
     [HttpGet] public Task<SelfProfileDto> Profile(CancellationToken ct) => service.GetProfileAsync(ct);
+    [HttpPut] public Task<SelfProfileDto> UpdateProfile(UpdateSelfProfileRequest request, CancellationToken ct) => service.UpdateProfileAsync(request, ct);
     [HttpGet("dashboard")] public Task<SelfDashboardDto> Dashboard(CancellationToken ct) => service.GetDashboardAsync(ct);
     [HttpPost("attendance/clock-in")] public Task<AttendanceDto> ClockIn(SelfClockRequest request, CancellationToken ct) => service.ClockInAsync(request, IpAddress(), Request.Headers.UserAgent.ToString(), ct);
     [HttpPost("attendance/clock-out")] public Task<AttendanceDto> ClockOut(SelfClockRequest request, CancellationToken ct) => service.ClockOutAsync(request, IpAddress(), Request.Headers.UserAgent.ToString(), ct);
     [HttpGet("attendance")] public Task<PagedResult<AttendanceDto>> Attendance([FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default) => service.GetAttendanceAsync(new(page, pageSize), from, to, ct);
+    [HttpGet("attendance/report")] public Task<PagedResult<DailyAttendanceReportDto>> AttendanceReport([FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default) => service.GetAttendanceReportAsync(new(page, pageSize), from, to, ct);
+    [HttpGet("attendance/summary")] public Task<IReadOnlyList<AttendanceSummaryDto>> AttendanceSummary([FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, CancellationToken ct = default) => service.GetAttendanceSummaryAsync(from, to, ct);
 
     [HttpPost("leave")] public Task<LeaveRequestDto> SubmitLeave(SelfLeaveRequest request, CancellationToken ct) => service.SubmitLeaveAsync(request, ct);
     [HttpGet("leave-types")] public Task<IReadOnlyList<LeaveTypeDto>> LeaveTypes(CancellationToken ct) => service.GetLeaveTypesAsync(ct);

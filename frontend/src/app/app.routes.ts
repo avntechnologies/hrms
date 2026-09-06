@@ -49,6 +49,13 @@ export const routes: Routes = [
         title: 'Employees · PeopleFlow',
       },
       {
+        path: 'employees/:id',
+        canActivate: [permissionGuard('employees.read')],
+        loadComponent: () =>
+          import('./features/employees/employee-detail.page').then((m) => m.EmployeeDetailPage),
+        title: 'Employee profile · PeopleFlow',
+      },
+      {
         path: 'work',
         canActivate: [permissionGuard('work.read')],
         loadComponent: () => import('./features/work/work.page').then((m) => m.WorkPage),
@@ -100,11 +107,12 @@ export const routes: Routes = [
         loadComponent: () => import('./features/module/module.page').then((m) => m.ModulePage),
         title: `${module[0].toUpperCase()}${module.slice(1)} · PeopleFlow`,
       })),
+      { path: 'settings/themes', redirectTo: 'settings', pathMatch: 'full' },
       {
-        path: 'settings/themes',
+        path: 'settings',
         loadComponent: () =>
           import('./features/settings/theme-studio.page').then((m) => m.ThemeStudioPage),
-        title: 'Appearance · PeopleFlow',
+        title: 'Settings · PeopleFlow',
       },
       { path: '**', redirectTo: 'dashboard' },
     ],

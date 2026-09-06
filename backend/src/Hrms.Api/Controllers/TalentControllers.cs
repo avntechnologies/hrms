@@ -21,6 +21,7 @@ public sealed class RecruitmentController(IRecruitmentService service) : Control
     [HttpPost("jobs")] public Task<JobDto> CreateJob(CreateJobRequest request, CancellationToken ct) => service.CreateJobAsync(request, ct);
     [HttpGet("jobs")] public Task<IReadOnlyList<JobDto>> Jobs([FromQuery] JobStatus? status = null, CancellationToken ct = default) => service.ListJobsAsync(status, ct);
     [HttpPost("candidates")] public Task<CandidateDto> CreateCandidate(CreateCandidateRequest request, CancellationToken ct) => service.CreateCandidateAsync(request, ct);
+    [HttpGet("candidates")] public Task<IReadOnlyList<CandidateDto>> Candidates(CancellationToken ct) => service.ListCandidatesAsync(ct);
     [HttpPost("applications")] public Task<JobApplicationDto> Apply(ApplyCandidateRequest request, CancellationToken ct) => service.ApplyAsync(request, ct);
     [HttpPut("applications/{id:guid}/stage")] public Task<JobApplicationDto> Move(Guid id, MoveCandidateRequest request, CancellationToken ct) => service.MoveAsync(id, request, ct);
     [HttpGet("jobs/{jobId:guid}/applications")] public Task<IReadOnlyList<JobApplicationDto>> Applications(Guid jobId, CancellationToken ct) => service.ListApplicationsAsync(jobId, ct);

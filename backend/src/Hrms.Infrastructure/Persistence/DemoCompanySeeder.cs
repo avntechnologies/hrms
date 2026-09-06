@@ -179,6 +179,17 @@ public sealed class DemoCompanySeeder(
             new LeaveRequest { TenantId = TenantId, EmployeeId = qa.Id, LeaveTypeId = casualLeave.Id, StartsOn = today.AddDays(7), EndsOn = today.AddDays(7), Days = 1, Reason = "Personal appointment", Status = LeaveRequestStatus.Pending },
             new LeaveRequest { TenantId = TenantId, EmployeeId = developer.Id, LeaveTypeId = annualLeave.Id, StartsOn = today.AddDays(-20), EndsOn = today.AddDays(-18), Days = 3, Reason = "Family travel", Status = LeaveRequestStatus.Approved, ReviewedBy = managerUser.Id, ReviewedAt = now.AddDays(-22), ReviewComment = "Approved" });
 
+        db.AttendancePolicies.Add(new AttendancePolicy
+        {
+            TenantId = TenantId,
+            OfficeStartsAt = new TimeOnly(9, 30),
+            OfficeEndsAt = new TimeOnly(18, 30),
+            RequiredMinutesPerDay = 540,
+            LateGraceMinutes = 10,
+            EarlyDepartureGraceMinutes = 5,
+            WorkingDaysCsv = "Monday,Tuesday,Wednesday,Thursday,Friday"
+        });
+
         var clockIn = new DateTimeOffset(today.AddDays(-1).ToDateTime(new TimeOnly(9, 26)), TimeSpan.FromHours(5.5)).ToUniversalTime();
         db.AttendanceRecords.AddRange(
             new AttendanceRecord { TenantId = TenantId, EmployeeId = developer.Id, WorkDate = today.AddDays(-1), ClockedInAt = clockIn, ClockedOutAt = clockIn.AddHours(8.6), Status = AttendanceStatus.Remote, WorkHours = 8.6m, OvertimeHours = 0.1m, Source = "Web", Notes = "Remote development day", ClockInLatitude = 12.971599m, ClockInLongitude = 77.594566m, ClockOutLatitude = 12.971599m, ClockOutLongitude = 77.594566m },

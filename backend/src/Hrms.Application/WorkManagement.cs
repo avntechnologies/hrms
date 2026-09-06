@@ -71,7 +71,8 @@ public static class WorkWorkflow
         [WorkItemStatus.Cancelled] = [WorkItemStatus.Backlog]
     };
 
-    public static bool CanTransition(WorkItemStatus from, WorkItemStatus to) => from == to || Transitions[from].Contains(to);
+    public static bool CanTransition(WorkItemStatus from, WorkItemStatus to) =>
+        Transitions.TryGetValue(from, out var allowed) && Enum.IsDefined(to) && (from == to || allowed.Contains(to));
 }
 
 public sealed class WorkManagementService(
@@ -212,6 +213,7 @@ public sealed class WorkManagementService(
         var project = await RequireProjectAsync(request.ProjectId, ct);
         if (!project.IsActive) throw new DomainException("This project is inactive.");
         Required(request.Summary, "Summary");
+        ValidateItemEnums(request.Type, request.Priority);
         var assigneeIds = NormalizeAssigneeIds(request.AssigneeEmployeeId, request.AssigneeEmployeeIds);
         foreach (var assigneeId in assigneeIds)
             await RequireAssignableAsync(request.ProjectId, assigneeId, access, ct);
@@ -249,8 +251,10 @@ public sealed class WorkManagementService(
         await RequireProjectAccessAsync(item.ProjectId, AccessKind.Create, ct);
         CheckVersion(item, request.Version);
         Required(request.Summary, "Summary");
+        ValidateItemEnums(request.Type, request.Priority);
         ValidateEstimate(request.OriginalEstimateMinutes, request.StoryPoints);
         var currentAssigneeIds = await CurrentAssigneeIdsAsync(item, ct);
+        NonNegative(request.RemainingEstimateMinutes, "Remaining estimate");
         var assigneeIds = request.AssigneeEmployeeIds is null && !request.AssigneeEmployeeId.HasValue
             ? currentAssigneeIds
             : NormalizeAssigneeIds(request.AssigneeEmployeeId, request.AssigneeEmployeeIds);
@@ -307,6 +311,8 @@ public sealed class WorkManagementService(
         CheckVersion(item, request.Version);
         if (!WorkWorkflow.CanTransition(item.Status, request.Status))
             throw new DomainException($"Items cannot move directly from {item.Status} to {request.Status}.");
+        if (request.Resolution.HasValue && !Enum.IsDefined(request.Resolution.Value))
+            throw new DomainException("Resolution is invalid.");
         var before = item.Status;
         item.Status = request.Status;
         if (request.Status is WorkItemStatus.Done or WorkItemStatus.Cancelled)
@@ -370,6 +376,7 @@ public sealed class WorkManagementService(
         await RequireProjectAccessAsync(item.ProjectId, AccessKind.Log, ct);
         ValidateWorklog(request.WorkDate, request.Minutes);
         var employeeId = user.EmployeeId ?? throw new DomainException("An employee profile is required to log work.");
+        await ValidateDailyWorklogTotalAsync(employeeId, request.WorkDate, request.Minutes, null, ct);
         var row = new WorkLog
         {
             TenantId = TenantId, WorkItemId = itemId, EmployeeId = employeeId,
@@ -392,9 +399,11 @@ public sealed class WorkManagementService(
         ValidateWorklog(request.WorkDate, request.Minutes);
         var row = await worklogs.FirstOrDefaultAsync(x => x.Id == worklogId && x.WorkItemId == itemId, ct)
             ?? throw new DomainException("Worklog was not found.");
-        if (row.EmployeeId != user.EmployeeId && !CanViewAllLogs(access))
+        if (!CanManageOwn(row.EmployeeId))
             throw new DomainException("You can only edit your own worklogs.");
         CheckVersion(row, request.Version);
+        await ValidateDailyWorklogTotalAsync(row.EmployeeId, request.WorkDate, request.Minutes, row.Id, ct);
+        NonNegative(request.RemainingEstimateMinutes, "Remaining estimate");
         row.WorkDate = request.WorkDate;
         row.Minutes = request.Minutes;
         row.Description = Clean(request.Description);
@@ -410,7 +419,7 @@ public sealed class WorkManagementService(
         var access = await RequireProjectAccessAsync(item.ProjectId, AccessKind.Log, ct);
         var row = await worklogs.FirstOrDefaultAsync(x => x.Id == worklogId && x.WorkItemId == itemId, ct)
             ?? throw new DomainException("Worklog was not found.");
-        if (row.EmployeeId != user.EmployeeId && !CanViewAllLogs(access))
+        if (!CanManageOwn(row.EmployeeId))
             throw new DomainException("You can only delete your own worklogs.");
         worklogs.Remove(row);
         await unitOfWork.SaveChangesAsync(ct);
@@ -511,7 +520,10 @@ public sealed class WorkManagementService(
 
     private async Task<WorkProjectMember?> RequireProjectAccessAsync(Guid projectId, AccessKind kind, CancellationToken ct)
     {
-        await RequireProjectAsync(projectId, ct);
+        RequirePermission(Permissions.WorkRead);
+        var project = await RequireProjectAsync(projectId, ct);
+        if (kind != AccessKind.Read && !project.IsActive)
+            throw new DomainException("This project is inactive. Reactivate it before changing work items.");
         if (user.HasPermission(Permissions.WorkManage)) return null;
         var employeeId = user.EmployeeId ?? throw new DomainException("An employee profile is required for work access.");
         var access = await members.FirstOrDefaultAsync(x => x.ProjectId == projectId && x.EmployeeId == employeeId, ct)
@@ -547,7 +559,8 @@ public sealed class WorkManagementService(
         await items.GetByIdAsync(id, ct) ?? throw new DomainException("Work item was not found.");
 
     private async Task<Employee> RequireEmployeeAsync(Guid id, CancellationToken ct) =>
-        await employees.FirstOrDefaultAsync(x => x.Id == id && x.Status != EmploymentStatus.Terminated, ct)
+        await employees.FirstOrDefaultAsync(x => x.Id == id && (x.Status == EmploymentStatus.Active
+            || x.Status == EmploymentStatus.Probation || x.Status == EmploymentStatus.NoticePeriod), ct)
         ?? throw new DomainException("Employee was not found or is inactive.");
 
     private void RequirePermission(string permission)
@@ -688,7 +701,7 @@ public sealed class WorkManagementService(
     private static string NormalizeLabels(IReadOnlyList<string>? labels) =>
         string.Join(',', (labels ?? []).Select(x => x.Trim().ToLowerInvariant()).Where(x => x.Length > 0).Distinct().Take(20));
     private static IReadOnlyList<Guid> NormalizeAssigneeIds(Guid? primaryAssigneeId, IReadOnlyList<Guid>? assigneeIds) =>
-        (assigneeIds is { Count: > 0 } ? assigneeIds : primaryAssigneeId.HasValue ? [primaryAssigneeId.Value] : [])
+        (assigneeIds is not null ? assigneeIds : primaryAssigneeId.HasValue ? [primaryAssigneeId.Value] : [])
         .Where(x => x != Guid.Empty).Distinct().Take(20).ToArray();
     private static IReadOnlyList<string> SplitLabels(string csv) =>
         csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -709,6 +722,20 @@ public sealed class WorkManagementService(
         if (minutes is < 1 or > 1440) throw new DomainException("Worklog time must be between 1 and 1,440 minutes.");
         if (date > DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1))
             throw new DomainException("Work cannot be logged more than one day in the future.");
+    }
+
+    private static void ValidateItemEnums(WorkItemType type, WorkItemPriority priority)
+    {
+        if (!Enum.IsDefined(type) || !Enum.IsDefined(priority))
+            throw new DomainException("Work item type or priority is invalid.");
+    }
+
+    private async Task ValidateDailyWorklogTotalAsync(Guid employeeId, DateOnly date, int minutes, Guid? excludeId, CancellationToken ct)
+    {
+        var existing = await worklogs.ListAsync(x => x.EmployeeId == employeeId && x.WorkDate == date
+            && (!excludeId.HasValue || x.Id != excludeId.Value), cancellationToken: ct);
+        if (existing.Sum(x => (long)x.Minutes) + minutes > 1440)
+            throw new DomainException("Total logged work across all tasks cannot exceed 24 hours in one day.");
     }
 
     private enum AccessKind { Read, Create, Assign, Transition, Comment, Log }
