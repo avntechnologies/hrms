@@ -35,8 +35,8 @@ public sealed class WorkManagementController(IWorkManagementService service) : C
         [FromQuery] int page = 1, [FromQuery] int pageSize = 100, [FromQuery] string? search = null,
         [FromQuery] Guid? projectId = null, [FromQuery] WorkItemStatus? status = null,
         [FromQuery] WorkItemPriority? priority = null, [FromQuery] Guid? assigneeEmployeeId = null,
-        CancellationToken ct = default) =>
-        service.SearchItemsAsync(new(page, pageSize, search), projectId, status, priority, assigneeEmployeeId, ct);
+        CancellationToken ct = default, [FromQuery] Guid? sprintId = null, [FromQuery] bool backlogOnly = false, [FromQuery] WorkItemType? type = null) =>
+        service.SearchItemsAsync(new(page, pageSize, search), projectId, status, priority, assigneeEmployeeId, ct, sprintId, backlogOnly, type);
 
     [HttpGet("items/{id:guid}")]
     public Task<WorkItemDetailDto> Item(Guid id, CancellationToken ct) => service.GetItemAsync(id, ct);

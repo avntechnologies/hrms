@@ -19,6 +19,10 @@
   --shadow: 0 1px 2px rgb(16 24 40 / 0.04);
   font-family: 'Segoe UI', system-ui, sans-serif;
   color-scheme: light;
+  --mat-sys-body-large-font: 'Segoe UI', system-ui, sans-serif;
+  --mat-sys-body-medium-font: 'Segoe UI', system-ui, sans-serif;
+  --mat-sys-label-large-font: 'Segoe UI', system-ui, sans-serif;
+  --mat-sys-title-medium-font: 'Segoe UI', system-ui, sans-serif;
 }
 
 :root[data-scheme='dark'] {
@@ -58,6 +62,23 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+// Material controls must use the same locally available font as the application.
+.mat-mdc-button-base, .mat-mdc-menu-item, .mat-mdc-paginator,
+.mat-mdc-select, .mat-mdc-form-field, .mat-mdc-checkbox, .mat-mdc-option {
+  font-family: 'Segoe UI', system-ui, sans-serif !important;
+  letter-spacing: normal !important;
+}
+.mat-mdc-button-base .mdc-button__label, .mat-mdc-menu-item-text { font-family: inherit !important; }
+.mat-mdc-button-base { font-weight: 600; }
+@media (pointer: coarse) {
+  .mat-mdc-button-base, .mat-mdc-icon-button, input, select { min-height: 44px; }
+  .mat-mdc-icon-button { min-width: 44px; }
+  input, textarea, select { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
 
 button,

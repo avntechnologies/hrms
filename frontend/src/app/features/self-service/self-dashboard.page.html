@@ -59,7 +59,7 @@
             <small>Today’s status</small>
             <h2>
               {{
-                dashboard()?.todayAttendance?.clockedOutAt
+                needsCorrection() ? 'Check-out needs correction' : dashboard()?.todayAttendance?.clockedOutAt
                   ? 'Ready to check in again'
                   : dashboard()?.todayAttendance?.clockedInAt
                     ? 'Currently checked in'
@@ -68,7 +68,7 @@
             </h2>
             @if (dashboard()?.todayAttendance?.clockedInAt) {
               <p>
-                Started {{ dashboard()?.todayAttendance?.clockedInAt | date: 'h:mm a' }}
+                Started {{ dashboard()?.todayAttendance?.clockedInAt | date: (dashboard()?.todayAttendance?.workDate === (now() | date: 'yyyy-MM-dd') ? 'h:mm a' : 'd MMM, h:mm a') }}
                 @if (dashboard()?.todayAttendance?.clockedOutAt) {
                   · Finished {{ dashboard()?.todayAttendance?.clockedOutAt | date: 'h:mm a' }}
                 }
@@ -89,7 +89,10 @@
         >
       </div>
       <div class="clock-actions">
-        @if (!dashboard()?.todayAttendance?.clockedInAt || dashboard()?.todayAttendance?.clockedOutAt) {
+        @if (needsCorrection()) {
+          <p>A previous session is still open. Request a correction from Clock sessions in My services.</p>
+          <button mat-raised-button class="primary-button" routerLink="/my-services"><mat-icon>edit_calendar</mat-icon>Fix missed check-out</button>
+        } @else if (!dashboard()?.todayAttendance?.clockedInAt || dashboard()?.todayAttendance?.clockedOutAt) {
           <button
             mat-raised-button
             class="primary-button"

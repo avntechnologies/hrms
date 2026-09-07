@@ -527,7 +527,10 @@ export class ModulePage implements OnInit, OnDestroy {
       if (field.min !== undefined) validators.push(Validators.min(field.min));
       if (field.type === 'email') validators.push(Validators.email);
       if (field.type === 'password') validators.push(Validators.minLength(8));
-      controls[field.key] = [initial, validators];
+        const date = field.type === 'datetime-local' && initial ? new Date(String(initial)) : null;
+        const value = date && !Number.isNaN(date.getTime())
+          ? new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) : initial;
+        controls[field.key] = [value, validators];
     }
     this.form = this.fb.group(controls);
   }

@@ -18,12 +18,12 @@
   </div>
 
   @if (success()) {
-    <div class="success-banner"><mat-icon>check_circle</mat-icon>{{ success() }}
+    <div class="success-banner" role="status"><mat-icon>check_circle</mat-icon>{{ success() }}
       <button mat-icon-button (click)="success.set('')" aria-label="Dismiss message"><mat-icon>close</mat-icon></button>
     </div>
   }
   @if (error()) {
-    <div class="error-banner"><span>{{ error() }}</span>
+    <div class="error-banner" role="alert"><span>{{ error() }}</span>
       <button mat-icon-button (click)="error.set('')" aria-label="Dismiss error"><mat-icon>close</mat-icon></button>
     </div>
   }
@@ -60,7 +60,17 @@
 
   <div class="work-section-progress" [class.visible]="itemsLoading() || reportLoading()" aria-hidden="true"><span></span></div>
 
-  @if ((loading() || itemsLoading()) && !items().items.length) {
+  @if (projects().length && (activeTab() === 'board' || activeTab() === 'list')) {
+    <div class="work-querybar">
+      <label class="work-search"><mat-icon>search</mat-icon><input aria-label="Search work" [value]="search()" (input)="search.set($any($event.target).value)" (keydown.enter)="loadItems()" placeholder="Search key or summary"></label>
+      <label>Sprint<select [value]="sprintFilter()" (change)="sprintFilter.set($any($event.target).value); loadItems()"><option value="">All work</option><option value="backlog">Unscheduled backlog</option>@for (sprint of sprints(); track sprint.id) { <option [value]="sprint.id">{{ sprint.name }} · {{ sprint.status }}</option> }</select></label>
+      <label>Assignee<select [value]="assigneeFilter()" (change)="assigneeFilter.set($any($event.target).value); loadItems()"><option value="">Everyone</option>@for (member of members(); track member.employeeId) { <option [value]="member.employeeId">{{ member.employeeName }}</option> }</select></label>
+      <label>Type<select [value]="typeFilter()" (change)="typeFilter.set($any($event.target).value); loadItems()"><option value="">All types</option>@for (type of types; track type) { <option>{{ type }}</option> }</select></label>
+      <button mat-stroked-button (click)="loadItems()" [disabled]="itemsLoading()"><mat-icon>search</mat-icon>Search</button>
+    </div>
+  }
+
+  @if (loading()) {
     <div class="work-loading"><mat-spinner diameter="32"></mat-spinner><span>Loading work...</span></div>
   } @else if (!projects().length) {
     <div class="work-empty">
@@ -70,13 +80,14 @@
     </div>
   } @else {
     @if (activeTab() === 'board') {
-      <div class="board" role="region" aria-label="Work board">
+      <p class="board-help">Drag cards to move work. Open any card for keyboard-accessible status actions. Each column loads independently.</p>
+      <div class="board" cdkDropListGroup role="region" aria-label="Work board">
         @for (status of boardStatuses; track status) {
           <section class="board-column">
-            <header><span class="status-dot" [attr.data-status]="status"></span><h2>{{ statusLabel(status) }}</h2><b>{{ itemsFor(status).length }}</b></header>
-            <div class="board-items">
+            <header><span class="status-dot" [attr.data-status]="status"></span><h2>{{ statusLabel(status) }}</h2><b>{{ boardPages()[status]?.total ?? 0 }}</b></header>
+            <div class="board-items" cdkDropList [cdkDropListData]="status" [cdkDropListSortingDisabled]="true" (cdkDropListDropped)="dropItem($event)">
               @for (item of itemsFor(status); track item.id) {
-                <button class="work-card" type="button" (click)="openItem(item.id)">
+                <button class="work-card" cdkDrag [cdkDragData]="item" [cdkDragDisabled]="!canMoveOnBoard() || !!actionBusy()" [cdkDragStartDelay]="{touch: 220, mouse: 0}" type="button" (click)="openItem(item.id)">
                   <div class="card-top"><span class="type-badge" [attr.data-type]="item.type">{{ item.type }}</span>
                     <mat-icon [class]="'priority ' + item.priority.toLowerCase()">{{ priorityIcon(item.priority) }}</mat-icon>
                   </div>
@@ -96,10 +107,17 @@
               } @empty {
                 <div class="column-empty">No items</div>
               }
+              @if (itemsFor(status).length < (boardPages()[status]?.total ?? 0)) {
+                <button mat-stroked-button class="load-more" (click)="loadMore(status)" [disabled]="itemsLoading()">Load more · {{ itemsFor(status).length }} of {{ boardPages()[status]?.total }}</button>
+              }
             </div>
           </section>
         }
       </div>
+    }
+
+    @if (activeTab() === 'sprints') {
+      <app-sprint-panel [projectId]="selectedProjectId()" [canPlan]="canPlan()" (selected)="showSprint($event)" (changed)="loadSprints()" />
     }
 
     @if (activeTab() === 'list') {
@@ -122,7 +140,7 @@
             <thead><tr><th>Key</th><th>Summary</th><th>Status</th><th>Priority</th><th>Assignee</th><th>Due date</th><th>Logged</th><th></th></tr></thead>
             <tbody>
               @for (item of items().items; track item.id) {
-                <tr (click)="openItem(item.id)">
+                <tr (click)="openItem(item.id)" (keydown.enter)="openItem(item.id)" tabindex="0" [attr.aria-label]="item.key + ': ' + item.summary">
                   <td><code>{{ item.key }}</code></td>
                   <td><div class="summary-cell"><span class="type-badge" [attr.data-type]="item.type">{{ item.type }}</span><b>{{ item.summary }}</b></div></td>
                   <td><span [class]="'work-status ' + item.status.toLowerCase()">{{ statusLabel(item.status) }}</span></td>
@@ -132,7 +150,7 @@
                   <td><button mat-icon-button (click)="$event.stopPropagation()" [matMenuTriggerFor]="transitionMenu" aria-label="Item actions"><mat-icon>more_horiz</mat-icon></button>
                     <mat-menu #transitionMenu="matMenu">
                       <button mat-menu-item (click)="openItem(item.id)"><mat-icon>open_in_new</mat-icon>Open item</button>
-                      @for (next of transitionOptions(item.status); track next) {
+                      @for (next of canMoveOnBoard() ? transitionOptions(item.status) : []; track next) {
                         <button mat-menu-item (click)="transition(item, next)"><mat-icon>arrow_forward</mat-icon>Move to {{ statusLabel(next) }}</button>
                       }
                     </mat-menu>
@@ -142,6 +160,7 @@
             </tbody>
           </table>
         </div>
+        <mat-paginator [length]="items().total" [pageSize]="25" [pageIndex]="items().page - 1" [disabled]="itemsLoading()" (page)="loadItems($event.pageIndex + 1)" aria-label="Work item pages"></mat-paginator>
       </section>
     }
 
@@ -210,7 +229,8 @@
     <div class="drawer-head"><div><small>{{ editing() ? editing()!.key : 'New work item' }}</small><h2>{{ editing() ? 'Edit work item' : 'Create work item' }}</h2></div><button mat-icon-button (click)="drawerOpen.set(false)"><mat-icon>close</mat-icon></button></div>
     <form class="drawer-body" [formGroup]="itemForm" id="item-form" (ngSubmit)="submitItem()">
       <div class="form-grid">
-        <div class="field wide"><label>Summary</label><input formControlName="summary" placeholder="What needs to be done?" /></div>
+        <div class="field wide"><label for="work-summary">Summary</label><input id="work-summary" formControlName="summary" placeholder="What needs to be done?" /></div>
+        @if (itemForm.controls.parentId.value) { <p class="field wide">Child of an existing work item. Complete all child items before closing the parent.</p> }
         <div class="field"><label>Type</label><select formControlName="type">@for (type of types; track type) { <option>{{ type }}</option> }</select></div>
         <div class="field"><label>Priority</label><select formControlName="priority">@for (priority of priorities; track priority) { <option>{{ priority }}</option> }</select></div>
         <div class="field wide assignee-field">
@@ -281,12 +301,22 @@
 
 @if (detailOpen()) {
   <div class="drawer-overlay" (click)="detailOpen.set(false)"></div>
-  <aside class="form-drawer detail-drawer" aria-label="Work item details">
+  <aside class="form-drawer detail-drawer" role="dialog" aria-modal="true" aria-label="Work item details" cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (keydown.escape)="detailOpen.set(false)">
     @if (detailLoading()) { <div class="drawer-progress" role="progressbar" aria-label="Loading ticket"><span></span></div> }
     @if (detail(); as data) {
-      <div class="drawer-head"><div><small>{{ data.item.projectKey }} · {{ data.item.type }}</small><h2>{{ data.item.key }}</h2></div><button mat-icon-button (click)="detailOpen.set(false)"><mat-icon>close</mat-icon></button></div>
+      <div class="drawer-head"><div><small>{{ data.item.projectKey }} · {{ data.item.type }}</small><h2>{{ data.item.key }}</h2></div><button mat-icon-button aria-label="Close work item" (click)="detailOpen.set(false)"><mat-icon>close</mat-icon></button></div>
       <div class="drawer-body detail-body">
         <div class="detail-title"><h3>{{ data.item.summary }}</h3>@if (canEdit()) { <button mat-stroked-button (click)="openEdit()"><mat-icon>edit</mat-icon>Edit</button> }</div>
+        <div class="detail-planning">
+          <label>Sprint<select [value]="data.item.sprintId ?? ''" [disabled]="!canPlan() || !!actionBusy() || data.item.status === 'Done' || data.item.status === 'Cancelled'" (change)="planItem($any($event.target).value)"><option value="">Unscheduled backlog</option>@for (sprint of sprints(); track sprint.id) { <option [value]="sprint.id" [disabled]="sprint.status === 'Completed'">{{ sprint.name }} · {{ sprint.status }}</option> }</select></label>
+          @if (data.item.parentId) { <button mat-button (click)="openItem(data.item.parentId)"><mat-icon>account_tree</mat-icon>Open parent</button> }
+        </div>
+        <section class="child-work" aria-label="Child work">
+          <div class="activity-section-head"><h4>Child work <span>{{ children().length }}</span></h4>
+            @if (canCreate() && data.item.type !== 'Subtask' && data.item.status !== 'Done' && data.item.status !== 'Cancelled') { <button mat-button (click)="createChild()"><mat-icon>add</mat-icon>Add subtask</button> }
+          </div>
+          @for (child of children(); track child.id) { <button class="child-work-row" (click)="openItem(child.id)"><code>{{ child.key }}</code><span>{{ child.summary }}</span><span class="work-status">{{ statusLabel(child.status) }}</span></button> }
+        </section>
         <div class="detail-actions">
           <button mat-stroked-button [matMenuTriggerFor]="statusMenu" [disabled]="!!actionBusy() || !canTransition()">
             @if (actionBusy() === 'transition') {

@@ -1,4 +1,5 @@
 import { FormFieldDefinition, ModuleDefinition, WorkspaceViewDefinition } from '../../core/models';
+import { correctionsView, myAttendanceSessionsView } from './attendance-correction.views';
 
 const option = (value: string) => ({ label: value.replace(/([a-z])([A-Z])/g, '$1 $2'), value });
 const options = (...values: string[]) => values.map(option);
@@ -128,6 +129,8 @@ export const MODULES: Record<string, ModuleDefinition> = {
     description:
       'Manage your own leave, timesheets, expenses, learning, reviews, assets, documents and payslips.',
     views: [
+      correctionsView('mine'),
+      myAttendanceSessionsView,
       {
         label: 'Leave',
         endpoint: '/me/leave',
@@ -154,7 +157,7 @@ export const MODULES: Record<string, ModuleDefinition> = {
           },
           { key: 'startsOn', label: 'Start date', type: 'date', required: true },
           { key: 'endsOn', label: 'End date', type: 'date', required: true },
-          { key: 'days', label: 'Number of days', type: 'number', required: true, min: 0 },
+          { key: 'days', label: 'Working days', type: 'number', required: true, min: 0.5, help: 'Exclude company holidays and non-working days. Use 0.5 only for a single half-day.' },
           { key: 'reason', label: 'Reason', type: 'textarea', required: true },
         ],
         filters: [
@@ -166,6 +169,8 @@ export const MODULES: Record<string, ModuleDefinition> = {
           },
         ],
         rowActions: [{
+          label: 'Cancel leave', icon: 'cancel', method: 'put', path: '/me/leave/{id}/cancel?version={version}', visibleStatuses: ['Pending', 'Approved'], confirm: 'Cancel this leave request and restore its available balance?',
+        }, {
           label: 'Supporting documents', icon: 'attach_file', method: 'documents', documentOwnerType: 'LeaveRequest', documentCategory: 'supporting-document', documentLabel: 'Leave supporting documents', documentMaxFiles: 10, documentReadonlyStatuses: ['Approved', 'Rejected', 'Cancelled'], documentAllowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'],
         }],
       },
@@ -454,6 +459,7 @@ export const MODULES: Record<string, ModuleDefinition> = {
     icon: 'groups',
     description: 'View only your direct reports and approve their operational requests.',
     views: [
+      correctionsView('team'),
       {
         label: 'Direct reports',
         endpoint: '/me/team',
@@ -877,6 +883,7 @@ export const MODULES: Record<string, ModuleDefinition> = {
     icon: 'schedule',
     description: 'Review punch sessions, attendance outcomes, exceptions and company attendance policy.',
     views: [
+      correctionsView('all'),
       {
         label: 'Punch sessions',
         endpoint: '/attendance',

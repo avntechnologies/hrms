@@ -31,6 +31,8 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
     public DbSet<Shift> Shifts => Set<Shift>();
     public DbSet<AttendancePolicy> AttendancePolicies => Set<AttendancePolicy>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
+    public DbSet<AttendanceCorrection> AttendanceCorrections => Set<AttendanceCorrection>();
+    public DbSet<WorkSprint> WorkSprints => Set<WorkSprint>();
     public DbSet<TimesheetEntry> TimesheetEntries => Set<TimesheetEntry>();
     public DbSet<Holiday> Holidays => Set<Holiday>();
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
@@ -72,7 +74,7 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
         modelBuilder.Entity<Tenant>().HasIndex(x => x.Slug).IsUnique();
         modelBuilder.Entity<UserAccount>().HasIndex(x => new { x.TenantId, x.Email }).IsUnique();
         modelBuilder.Entity<Role>().HasIndex(x => new { x.TenantId, x.NormalizedName }).IsUnique();
-        modelBuilder.Entity<UserRole>().HasIndex(x => new { x.TenantId, x.UserId, x.RoleId }).IsUnique();
+        modelBuilder.Entity<UserRole>().HasIndex(x => new { x.TenantId, x.UserId, x.RoleId }).IsUnique().HasFilter("\"IsDeleted\" = false");
         modelBuilder.Entity<RefreshToken>().HasIndex(x => x.TokenHash).IsUnique();
         modelBuilder.Entity<Employee>().HasIndex(x => new { x.TenantId, x.EmployeeNumber }).IsUnique();
         modelBuilder.Entity<Employee>().HasIndex(x => new { x.TenantId, x.WorkEmail }).IsUnique();
@@ -80,6 +82,13 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
         modelBuilder.Entity<Designation>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<Location>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<AttendanceRecord>().HasIndex(x => new { x.TenantId, x.EmployeeId, x.WorkDate });
+        modelBuilder.Entity<AttendanceRecord>().HasIndex(x => new { x.TenantId, x.EmployeeId })
+            .IsUnique().HasFilter("\"IsDeleted\" = false AND \"ClockedOutAt\" IS NULL");
+        modelBuilder.Entity<AttendanceCorrection>().HasIndex(x => new { x.TenantId, x.EmployeeId, x.WorkDate, x.Status });
+        modelBuilder.Entity<WorkSprint>().HasIndex(x => new { x.TenantId, x.ProjectId, x.Status });
+        modelBuilder.Entity<WorkSprint>().HasIndex(x => new { x.TenantId, x.ProjectId })
+            .IsUnique().HasFilter("\"IsDeleted\" = false AND \"Status\" = 1");
+        modelBuilder.Entity<WorkItem>().HasIndex(x => new { x.TenantId, x.ProjectId, x.SprintId, x.Status });
         modelBuilder.Entity<AttendancePolicy>().HasIndex(x => x.TenantId).IsUnique();
         modelBuilder.Entity<LeaveType>().HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         modelBuilder.Entity<LeaveBalance>().HasIndex(x => new { x.TenantId, x.EmployeeId, x.LeaveTypeId, x.Year }).IsUnique();
@@ -177,7 +186,13 @@ public sealed class HrmsDbContext(DbContextOptions<HrmsDbContext> options, ICurr
         return result;
     }
 
-    private static string Serialize(PropertyValues values) => JsonSerializer.Serialize(values.Properties.ToDictionary(p => p.Name, p => values[p]));
+    // Audit records must never become a second credential store.
+    private static string Serialize(PropertyValues values) => JsonSerializer.Serialize(values.Properties
+        .Where(p => !p.Name.Contains("Password", StringComparison.OrdinalIgnoreCase)
+            && !p.Name.Contains("Token", StringComparison.OrdinalIgnoreCase)
+            && !p.Name.Contains("Secret", StringComparison.OrdinalIgnoreCase)
+            && !p.Name.Contains("Encrypted", StringComparison.OrdinalIgnoreCase))
+        .ToDictionary(p => p.Name, p => values[p]));
 
     private void ApplyGlobalFilter(ModelBuilder modelBuilder, Type clrType)
     {

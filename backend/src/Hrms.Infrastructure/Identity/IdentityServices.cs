@@ -62,7 +62,8 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : ITokenServic
 {
     private readonly JwtOptions _options = options.Value;
     public int RefreshTokenLifetimeDays => _options.RefreshTokenDays;
-    public string CreateAccessToken(Guid userId, Guid tenantId, Guid? employeeId, string email, bool isPlatformAdmin, IEnumerable<string> roles, IEnumerable<string> permissions)
+    public int AccessTokenLifetimeMinutes => _options.AccessTokenMinutes;
+    public string CreateAccessToken(Guid userId, Guid tenantId, Guid? employeeId, string email, bool isPlatformAdmin, IEnumerable<string> roles, IEnumerable<string> permissions, Guid? sessionId = null)
     {
         var claims = new List<Claim>
         {
@@ -70,6 +71,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : ITokenServic
             new("tenant_id", tenantId.ToString()), new("platform_admin", isPlatformAdmin.ToString().ToLowerInvariant())
         };
         if (employeeId.HasValue) claims.Add(new Claim("employee_id", employeeId.Value.ToString()));
+        if (sessionId.HasValue) claims.Add(new Claim("session_id", sessionId.Value.ToString()));
         claims.AddRange(roles.Select(x => new Claim(ClaimTypes.Role, x)));
         claims.AddRange(permissions.Select(x => new Claim("permission", x)));
         var credentials = new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey)), SecurityAlgorithms.HmacSha256);

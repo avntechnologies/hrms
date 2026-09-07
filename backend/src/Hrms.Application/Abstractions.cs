@@ -49,10 +49,11 @@ public interface IPasswordHasher
 
 public interface ITokenService
 {
-    string CreateAccessToken(Guid userId, Guid tenantId, Guid? employeeId, string email, bool isPlatformAdmin, IEnumerable<string> roles, IEnumerable<string> permissions);
+    string CreateAccessToken(Guid userId, Guid tenantId, Guid? employeeId, string email, bool isPlatformAdmin, IEnumerable<string> roles, IEnumerable<string> permissions, Guid? sessionId = null);
     string CreateRefreshToken();
     string HashRefreshToken(string token);
     int RefreshTokenLifetimeDays { get; }
+    int AccessTokenLifetimeMinutes { get; }
 }
 
 public interface IAuditReader

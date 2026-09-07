@@ -53,6 +53,7 @@ public interface ILeaveService
     Task<IReadOnlyList<LeaveTypeDto>> ListTypesAsync(CancellationToken cancellationToken);
     Task<LeaveRequestDto> SubmitAsync(SubmitLeaveRequest request, CancellationToken cancellationToken);
     Task<LeaveRequestDto> ReviewAsync(Guid id, ReviewLeaveRequest request, CancellationToken cancellationToken);
+    Task<LeaveRequestDto> CancelAsync(Guid id, long version, CancellationToken cancellationToken);
     Task<PagedResult<LeaveRequestDto>> SearchAsync(PagedRequest request, Guid? employeeId, LeaveRequestStatus? status, CancellationToken cancellationToken);
     Task<IReadOnlyList<LeaveBalanceDto>> GetBalancesAsync(Guid employeeId, int year, CancellationToken cancellationToken);
 }
@@ -327,7 +328,8 @@ public sealed class AuthService(
         var roleNames = assigned.Select(x => x.NormalizedName).Distinct().ToArray();
         var permissions = assigned.SelectMany(x => x.PermissionsCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)).Distinct().ToArray();
         var employeeId = (await employees.FirstOrDefaultAsync(x => x.UserId == user.Id, ct))?.Id;
-        var access = tokenService.CreateAccessToken(user.Id, user.TenantId, employeeId, user.Email, user.IsPlatformAdmin, roleNames, permissions);
+        var sessionId = Guid.NewGuid();
+        var access = tokenService.CreateAccessToken(user.Id, user.TenantId, employeeId, user.Email, user.IsPlatformAdmin, roleNames, permissions, sessionId);
         var refresh = tokenService.CreateRefreshToken();
         if (replacedToken is not null)
         {
@@ -336,21 +338,22 @@ public sealed class AuthService(
         }
         await refreshTokens.AddAsync(new RefreshToken
         {
-            TenantId = user.TenantId, UserId = user.Id, TokenHash = tokenService.HashRefreshToken(refresh),
+            Id = sessionId, TenantId = user.TenantId, UserId = user.Id, TokenHash = tokenService.HashRefreshToken(refresh),
             ExpiresAt = DateTimeOffset.UtcNow.AddDays(tokenService.RefreshTokenLifetimeDays)
         }, ct);
         await unitOfWork.SaveChangesAsync(ct);
-        return new TokenResponse(access, refresh, DateTimeOffset.UtcNow.AddMinutes(15), new UserDto(user.Id, user.TenantId, employeeId, user.Email, user.DisplayName, roleNames, permissions));
+        return new TokenResponse(access, refresh, DateTimeOffset.UtcNow.AddMinutes(tokenService.AccessTokenLifetimeMinutes), new UserDto(user.Id, user.TenantId, employeeId, user.Email, user.DisplayName, roleNames, permissions));
     }
 }
 
-public sealed class IdentityAdminService(IRepository<UserAccount> users, IRepository<Role> roles, IRepository<UserRole> userRoles, IRepository<Employee> employees, IRepository<RefreshToken> refreshTokens, IPasswordHasher passwordHasher, ICurrentTenant tenant, IUnitOfWork unitOfWork, INotificationService notifications) : ServiceBase(tenant), IIdentityAdminService
+public sealed class IdentityAdminService(IRepository<UserAccount> users, IRepository<Role> roles, IRepository<UserRole> userRoles, IRepository<Employee> employees, IRepository<RefreshToken> refreshTokens, IPasswordHasher passwordHasher, ICurrentTenant tenant, IUnitOfWork unitOfWork, INotificationService notifications, ICurrentUser actor) : ServiceBase(tenant), IIdentityAdminService
 {
     public async Task<RoleDto> CreateRoleAsync(CreateRoleRequest r, CancellationToken ct)
     {
         var normalized = r.Name.Trim().Replace(' ', '_').ToUpperInvariant();
         if (await roles.AnyAsync(x => x.NormalizedName == normalized, ct)) throw new DomainException("Role name already exists.");
         var requested = r.Permissions.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        ValidateDelegation(requested);
         if (requested.Any(x => x != Permissions.All && !Permissions.Catalog.Contains(x, StringComparer.OrdinalIgnoreCase))) throw new DomainException("One or more permissions are not supported.");
         var role = new Role { TenantId = TenantId, Name = r.Name.Trim(), NormalizedName = normalized, PermissionsCsv = string.Join(',', requested) };
         await roles.AddAsync(role, ct); await unitOfWork.SaveChangesAsync(ct); return Map(role);
@@ -377,14 +380,24 @@ public sealed class IdentityAdminService(IRepository<UserAccount> users, IReposi
     {
         var user = await users.GetByIdAsync(userId, ct) ?? throw new KeyNotFoundException("User not found."); CheckVersion(user, r.Version);
         var validRoles = await roles.ListAsync(x => r.RoleIds.Contains(x.Id), cancellationToken: ct); if (validRoles.Count != r.RoleIds.Distinct().Count()) throw new DomainException("One or more roles are invalid.");
-        var old = await userRoles.ListAsync(x => x.UserId == userId, cancellationToken: ct); foreach (var link in old) userRoles.Remove(link);
-        foreach (var roleId in r.RoleIds.Distinct()) await userRoles.AddAsync(new UserRole { TenantId = TenantId, UserId = userId, RoleId = roleId }, ct);
+        ValidateDelegation(validRoles.SelectMany(x => x.PermissionsCsv.Split(',')));
+        ValidateDelegation(validRoles.SelectMany(x => x.PermissionsCsv.Split(',')));
+        var old = await userRoles.ListAsync(x => x.UserId == userId, cancellationToken: ct);
+        var oldRoleIds = old.Select(x => x.RoleId).ToArray();
+        var oldRoles = await roles.ListAsync(x => oldRoleIds.Contains(x.Id), cancellationToken: ct);
+        ValidateDelegation(oldRoles.SelectMany(x => x.PermissionsCsv.Split(',')));
+        if (actor.UserId == userId && !validRoles.Any(x => x.PermissionsCsv.Split(',').Any(p => p is Permissions.All or Permissions.IdentityManage)))
+            throw new DomainException("You cannot remove your own access administration permission.");
+        foreach (var link in old.Where(x => !r.RoleIds.Contains(x.RoleId))) userRoles.Remove(link);
+        foreach (var roleId in r.RoleIds.Distinct().Where(id => !old.Any(x => x.RoleId == id))) await userRoles.AddAsync(new UserRole { TenantId = TenantId, UserId = userId, RoleId = roleId }, ct);
         user.UpdatedAt = DateTimeOffset.UtcNow; await notifications.QueueForUsersAsync([userId], "Access roles updated", "Your account roles and permissions were updated.", "security", "/my", ct); await unitOfWork.SaveChangesAsync(ct); return Map(user, r.RoleIds);
     }
     public async Task<UserAdminDto> ResetPasswordAsync(Guid userId, ResetUserPasswordRequest r, CancellationToken ct)
     {
         if (r.Password.Length < 8) throw new DomainException("Password must be at least 8 characters.");
         var user = await users.GetByIdAsync(userId, ct) ?? throw new KeyNotFoundException("User not found.");
+        var targetRoleIds = (await userRoles.ListAsync(x => x.UserId == userId, cancellationToken: ct)).Select(x => x.RoleId).ToArray();
+        ValidateDelegation((await roles.ListAsync(x => targetRoleIds.Contains(x.Id), cancellationToken: ct)).SelectMany(x => x.PermissionsCsv.Split(',')));
         user.PasswordHash = passwordHasher.Hash(r.Password);
         user.FailedLoginCount = 0;
         user.LockedUntil = null;
@@ -402,16 +415,23 @@ public sealed class IdentityAdminService(IRepository<UserAccount> users, IReposi
         foreach (var user in rows) result.Add(Map(user, (await userRoles.ListAsync(x => x.UserId == user.Id, cancellationToken: ct)).Select(x => x.RoleId).ToArray(), (await employees.FirstOrDefaultAsync(x => x.UserId == user.Id, ct))?.Id));
         return new(result, r.SafePage, r.SafePageSize, total);
     }
+    private void ValidateDelegation(IEnumerable<string> permissions)
+    {
+        if (permissions.Any(p => !actor.HasPermission(p) && p is not (Permissions.SelfService or Permissions.TeamRead or Permissions.TeamApprove)))
+            throw new UnauthorizedAccessException("You cannot grant or administer permissions above your own access level.");
+    }
     private static RoleDto Map(Role x) => new(x.Id, x.Name, x.PermissionsCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), x.IsSystem);
     private static UserAdminDto Map(UserAccount x, IEnumerable<Guid> roleIds, Guid? employeeId = null) => new(x.Id, employeeId, x.DisplayName, x.Email, x.IsActive, roleIds.ToArray(), x.Version);
 }
 
-public sealed class EmployeeService(IRepository<Employee> employees, IRepository<UserAccount> users, IRepository<RefreshToken> refreshTokens, IRepository<TenantSubscription> subscriptions, IRepository<AuditLog> auditLogs, ICurrentTenant tenant, IUnitOfWork unitOfWork) : ServiceBase(tenant), IEmployeeService
+public sealed class EmployeeService(IRepository<Employee> employees, IRepository<UserAccount> users, IRepository<RefreshToken> refreshTokens, IRepository<TenantSubscription> subscriptions, IRepository<AuditLog> auditLogs, ICurrentTenant tenant, IUnitOfWork unitOfWork, IRepository<Department> departments, IRepository<Designation> designations, IRepository<Location> locations) : ServiceBase(tenant), IEmployeeService
 {
     public async Task<EmployeeDto> CreateAsync(CreateEmployeeRequest r, CancellationToken ct)
     {
         Required(r.EmployeeNumber, "Employee number"); Required(r.FirstName, "First name"); Required(r.WorkEmail, "Work email");
-        if (await employees.AnyAsync(x => x.EmployeeNumber == r.EmployeeNumber || x.WorkEmail == r.WorkEmail.ToLower(), ct))
+        await ValidateEmployee(null, r.FirstName, r.WorkEmail, r.BaseSalary, r.SalaryCurrency, r.EmploymentType, r.DepartmentId, r.DesignationId, r.LocationId, r.ManagerId, ct);
+        var employeeNumber = r.EmployeeNumber.Trim().ToLowerInvariant(); var email = r.WorkEmail.Trim().ToLowerInvariant();
+        if (await employees.AnyAsync(x => x.EmployeeNumber.ToLower() == employeeNumber || x.WorkEmail == email, ct))
             throw new DomainException("Employee number or work email already exists.");
         var sub = await subscriptions.FirstOrDefaultAsync(x => x.IsActive, ct);
         if (sub is not null && await employees.CountAsync(x => x.Status != EmploymentStatus.Terminated, ct) >= sub.EmployeeLimit)
@@ -439,7 +459,13 @@ public sealed class EmployeeService(IRepository<Employee> employees, IRepository
     public async Task<EmployeeDto> UpdateAsync(Guid id, UpdateEmployeeRequest r, CancellationToken ct)
     {
         var e = await employees.GetByIdAsync(id, ct) ?? throw new KeyNotFoundException("Employee not found."); CheckVersion(e, r.Version);
-        if (await employees.AnyAsync(x => x.Id != id && x.WorkEmail == r.WorkEmail.ToLower(), ct)) throw new DomainException("Work email already exists.");
+        await ValidateEmployee(id, r.FirstName, r.WorkEmail, r.BaseSalary, r.SalaryCurrency, r.EmploymentType, r.DepartmentId, r.DesignationId, r.LocationId, r.ManagerId, ct);
+        if (!Enum.IsDefined(r.Status)) throw new DomainException("Employment status is invalid.");
+        var email = r.WorkEmail.Trim().ToLowerInvariant();
+        if (await employees.AnyAsync(x => x.Id != id && x.WorkEmail == email, ct)
+            || await users.AnyAsync(x => x.Email == email && x.Id != e.UserId, ct)) throw new DomainException("Work email already exists.");
+        if (r.Status is EmploymentStatus.Terminated or EmploymentStatus.Resigned) e.TerminationDate ??= DateOnly.FromDateTime(DateTime.UtcNow);
+        else if (r.Status is EmploymentStatus.Active or EmploymentStatus.Probation or EmploymentStatus.NoticePeriod) e.TerminationDate = null;
         e.FirstName = r.FirstName.Trim(); e.LastName = r.LastName.Trim(); e.WorkEmail = r.WorkEmail.Trim().ToLowerInvariant(); e.Phone = r.Phone;
         e.Status = r.Status; e.EmploymentType = r.EmploymentType; e.DepartmentId = r.DepartmentId; e.DesignationId = r.DesignationId;
         e.LocationId = r.LocationId; e.ManagerId = r.ManagerId; e.BaseSalary = r.BaseSalary; e.SalaryCurrency = r.SalaryCurrency.ToUpperInvariant();
@@ -454,6 +480,27 @@ public sealed class EmployeeService(IRepository<Employee> employees, IRepository
         var userId = employee.UserId.Value.ToString();
         var rows = await auditLogs.ListAsync(x => x.EntityType == nameof(UserAccount) && x.EntityId == userId && x.Action == "Login", q => q.OrderByDescending(x => x.CreatedAt), take: Math.Clamp(take, 1, 200), cancellationToken: ct);
         return rows.Select(x => new LoginHistoryDto(x.CreatedAt, x.IpAddress, UserAgent(x.AfterJson))).ToArray();
+    }
+    private async Task ValidateEmployee(Guid? id, string firstName, string email, decimal salary, string currency, EmploymentType employmentType,
+        Guid? departmentId, Guid? designationId, Guid? locationId, Guid? managerId, CancellationToken ct)
+    {
+        Required(firstName, "First name"); Required(email, "Work email"); Required(currency, "Salary currency");
+        if (!System.Net.Mail.MailAddress.TryCreate(email.Trim(), out var address) || address.Address != email.Trim()) throw new DomainException("Work email is invalid.");
+        if (salary < 0) throw new DomainException("Base salary cannot be negative.");
+        if (currency.Length != 3 || !currency.All(char.IsAsciiLetter)) throw new DomainException("Use a three-letter currency code.");
+        if (!Enum.IsDefined(employmentType)) throw new DomainException("Employment type is invalid.");
+        if (departmentId.HasValue && !await departments.AnyAsync(x => x.Id == departmentId && x.IsActive, ct)) throw new DomainException("Select an active department in this company.");
+        if (designationId.HasValue && !await designations.AnyAsync(x => x.Id == designationId && x.IsActive, ct)) throw new DomainException("Select an active designation in this company.");
+        if (locationId.HasValue && !await locations.AnyAsync(x => x.Id == locationId && x.IsActive, ct)) throw new DomainException("Select an active location in this company.");
+        var visited = new HashSet<Guid>();
+        if (id.HasValue) visited.Add(id.Value);
+        while (managerId.HasValue)
+        {
+            if (!visited.Add(managerId.Value)) throw new DomainException("Reporting lines cannot contain a cycle or self-reporting relationship.");
+            var manager = await employees.GetByIdAsync(managerId.Value, ct) ?? throw new DomainException("Select a manager in this company.");
+            if (manager.Status is EmploymentStatus.Suspended or EmploymentStatus.Terminated or EmploymentStatus.Resigned) throw new DomainException("The reporting manager must be active.");
+            managerId = manager.ManagerId;
+        }
     }
     private static string? UserAgent(string? json)
     {
@@ -477,15 +524,27 @@ public sealed class OrganizationService(IRepository<Department> departments, IRe
     private static LocationDto Map(Location x) => new(x.Id, x.Name, x.Code, x.Address, x.City, x.CountryCode, x.IsActive);
 }
 
-public sealed class LeaveService(IRepository<LeaveType> types, IRepository<LeaveBalance> balances, IRepository<LeaveRequest> requests, IRepository<Employee> employees, IRepository<StoredDocument> documents, ICurrentTenant tenant, ICurrentUser user, IUnitOfWork unitOfWork, INotificationService notifications) : ServiceBase(tenant), ILeaveService
+public sealed class LeaveService(IRepository<LeaveType> types, IRepository<LeaveBalance> balances, IRepository<LeaveRequest> requests, IRepository<Employee> employees, IRepository<StoredDocument> documents, ICurrentTenant tenant, ICurrentUser user, IUnitOfWork unitOfWork, INotificationService notifications, IRepository<AttendancePolicy> policies, IRepository<Holiday> holidays, IRepository<Tenant> tenants) : ServiceBase(tenant), ILeaveService
 {
     public async Task<LeaveTypeDto> CreateTypeAsync(CreateLeaveTypeRequest r, CancellationToken ct) { if (await types.AnyAsync(x => x.Code == r.Code.ToUpper(), ct)) throw new DomainException("Leave type code already exists."); var x = new LeaveType { TenantId = TenantId, Name = r.Name.Trim(), Code = r.Code.Trim().ToUpperInvariant(), AnnualAllowance = r.AnnualAllowance, IsPaid = r.IsPaid, RequiresDocument = r.RequiresDocument, MaxConsecutiveDays = r.MaxConsecutiveDays }; await types.AddAsync(x, ct); await unitOfWork.SaveChangesAsync(ct); return Map(x); }
     public async Task<IReadOnlyList<LeaveTypeDto>> ListTypesAsync(CancellationToken ct) => (await types.ListAsync(x => x.IsActive, q => q.OrderBy(x => x.Name), cancellationToken: ct)).Select(Map).ToArray();
     public async Task<LeaveRequestDto> SubmitAsync(SubmitLeaveRequest r, CancellationToken ct)
     {
         if (r.EndsOn < r.StartsOn || r.Days <= 0) throw new DomainException("Leave dates or day count are invalid.");
+        if (r.StartsOn.Year != r.EndsOn.Year) throw new DomainException("Submit separate requests for each leave year so balances are charged correctly.");
+        Required(r.Reason, "Leave reason");
         var employee = await employees.GetByIdAsync(r.EmployeeId, ct) ?? throw new KeyNotFoundException("Employee not found.");
+        if (employee.Status is EmploymentStatus.Suspended or EmploymentStatus.Terminated or EmploymentStatus.Resigned || r.StartsOn < employee.HireDate)
+            throw new DomainException("Leave requires an active employee and cannot precede their hire date.");
         var type = await types.GetByIdAsync(r.LeaveTypeId, ct) ?? throw new KeyNotFoundException("Leave type not found.");
+        if (!type.IsActive) throw new DomainException("This leave type is inactive.");
+        var policy = await policies.FirstOrDefaultAsync(_ => true, ct) ?? new AttendancePolicy();
+        var workingDays = policy.WorkingDaysCsv.Split(',').Select(x => x.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var excludedDates = (await holidays.ListAsync(x => !x.IsOptional && (!x.LocationId.HasValue || x.LocationId == employee.LocationId) && x.Date >= r.StartsOn && x.Date <= r.EndsOn, cancellationToken: ct)).Select(x => x.Date).ToHashSet();
+        var scheduledDays = Enumerable.Range(0, r.EndsOn.DayNumber - r.StartsOn.DayNumber + 1).Select(r.StartsOn.AddDays)
+            .Count(date => workingDays.Contains(date.DayOfWeek.ToString()) && !excludedDates.Contains(date));
+        if (scheduledDays == 0 || (r.Days != scheduledDays && !(r.StartsOn == r.EndsOn && scheduledDays == 1 && r.Days == .5m)))
+            throw new DomainException($"This date range contains {scheduledDays} scheduled working day(s). Request that count, or 0.5 for a single half-day.");
         if (type.MaxConsecutiveDays > 0 && r.Days > type.MaxConsecutiveDays) throw new DomainException("Requested leave exceeds the maximum consecutive days.");
         if (await requests.AnyAsync(x => x.EmployeeId == r.EmployeeId && x.Status != LeaveRequestStatus.Rejected && x.Status != LeaveRequestStatus.Cancelled && x.StartsOn <= r.EndsOn && x.EndsOn >= r.StartsOn, ct)) throw new DomainException("The leave request overlaps an existing request.");
         var balance = await GetOrCreateBalance(r.EmployeeId, type, r.StartsOn.Year, ct);
@@ -501,6 +560,8 @@ public sealed class LeaveService(IRepository<LeaveType> types, IRepository<Leave
     {
         var x = await requests.GetByIdAsync(id, ct) ?? throw new KeyNotFoundException("Leave request not found."); CheckVersion(x, r.Version);
         if (x.Status != LeaveRequestStatus.Pending) throw new DomainException("Only pending requests can be reviewed.");
+        if (user.EmployeeId == x.EmployeeId) throw new UnauthorizedAccessException("You cannot review your own leave request.");
+        if (!r.Approve && string.IsNullOrWhiteSpace(r.Comment)) throw new DomainException("A rejection reason is required.");
         var type = await types.GetByIdAsync(x.LeaveTypeId, ct) ?? throw new KeyNotFoundException("Leave type not found.");
         if (r.Approve && type.RequiresDocument && !await documents.AnyAsync(d => d.OwnerType == DocumentOwnerType.LeaveRequest && d.OwnerId == x.Id && d.Category == "supporting-document", ct))
             throw new DomainException($"A supporting document is required before {type.Name} can be approved.");
@@ -519,11 +580,31 @@ public sealed class LeaveService(IRepository<LeaveType> types, IRepository<Leave
     }
     public async Task<IReadOnlyList<LeaveBalanceDto>> GetBalancesAsync(Guid employeeId, int year, CancellationToken ct)
     {
+        _ = await employees.GetByIdAsync(employeeId, ct) ?? throw new KeyNotFoundException("Employee not found.");
+        if (year is < 2000 or > 2200) throw new DomainException("Leave year is invalid.");
         var allTypes = await types.ListAsync(x => x.IsActive, cancellationToken: ct); var result = new List<LeaveBalanceDto>();
         foreach (var type in allTypes) { var x = await GetOrCreateBalance(employeeId, type, year, ct); result.Add(Map(x)); }
         await unitOfWork.SaveChangesAsync(ct); return result;
     }
     private async Task<LeaveBalance> GetOrCreateBalance(Guid employeeId, LeaveType type, int year, CancellationToken ct) { var x = await balances.FirstOrDefaultAsync(b => b.EmployeeId == employeeId && b.LeaveTypeId == type.Id && b.Year == year, ct); if (x is not null) return x; x = new LeaveBalance { TenantId = TenantId, EmployeeId = employeeId, LeaveTypeId = type.Id, Year = year, Entitled = type.AnnualAllowance }; await balances.AddAsync(x, ct); return x; }
+    public async Task<LeaveRequestDto> CancelAsync(Guid id, long version, CancellationToken ct)
+    {
+        var row = await requests.GetByIdAsync(id, ct) ?? throw new KeyNotFoundException("Leave request not found.");
+        if (!user.HasPermission(Permissions.LeaveManage) && !(user.HasPermission(Permissions.SelfService) && user.EmployeeId == row.EmployeeId))
+            throw new UnauthorizedAccessException("You can only cancel your own leave.");
+        CheckVersion(row, version);
+        if (row.Status is not (LeaveRequestStatus.Pending or LeaveRequestStatus.Approved)) throw new DomainException("Only pending or approved requests can be cancelled.");
+        var company = await tenants.GetByIdAsync(TenantId, ct);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, AttendanceCalendar.Zone(company?.TimeZone)).DateTime);
+        if (row.Status == LeaveRequestStatus.Approved && row.StartsOn <= today) throw new DomainException("Approved leave that has started requires an HR adjustment.");
+        var type = await types.GetByIdAsync(row.LeaveTypeId, ct) ?? throw new KeyNotFoundException("Leave type not found.");
+        var balance = await GetOrCreateBalance(row.EmployeeId, type, row.StartsOn.Year, ct);
+        if (row.Status == LeaveRequestStatus.Pending) balance.Pending = Math.Max(0, balance.Pending - row.Days);
+        else balance.Used = Math.Max(0, balance.Used - row.Days);
+        row.Status = LeaveRequestStatus.Cancelled;
+        await unitOfWork.SaveChangesAsync(ct);
+        return Map(row);
+    }
     private static LeaveTypeDto Map(LeaveType x) => new(x.Id, x.Name, x.Code, x.AnnualAllowance, x.IsPaid, x.RequiresDocument, x.MaxConsecutiveDays);
     private static LeaveRequestDto Map(LeaveRequest x) => new(x.Id, x.EmployeeId, x.LeaveTypeId, x.StartsOn, x.EndsOn, x.Days, x.Reason, x.Status, x.ReviewComment, x.Version);
     private static LeaveBalanceDto Map(LeaveBalance x) => new(x.LeaveTypeId, x.Year, x.Entitled, x.Used, x.Pending, x.Available);
@@ -536,28 +617,34 @@ public sealed class AttendanceService(IRepository<AttendanceRecord> records, IRe
         ValidateCoordinates(r);
         var employee = await employees.GetByIdAsync(r.EmployeeId, ct) ?? throw new KeyNotFoundException("Employee not found.");
         if (employee.Status is EmploymentStatus.Suspended or EmploymentStatus.Terminated or EmploymentStatus.Resigned) throw new DomainException("Attendance cannot be recorded for an inactive employee.");
-        var at = r.Timestamp ?? DateTimeOffset.UtcNow;
+        var at = r.Timestamp?.ToUniversalTime() ?? DateTimeOffset.UtcNow;
         if (at > DateTimeOffset.UtcNow.AddMinutes(5)) throw new DomainException("Check-in time cannot be in the future.");
-        var date = await LocalDate(at, ct);
-        if (await records.AnyAsync(x => x.EmployeeId == r.EmployeeId && x.ClockedOutAt == null, ct)) throw new DomainException("Employee already has an open attendance session.");
         var policy = await Policy(ct);
+        var company = await tenants.GetByIdAsync(TenantId, ct);
+        var date = AttendanceCalendar.WorkDate(at, AttendanceCalendar.Zone(company?.TimeZone), policy.OfficeStartsAt, policy.OfficeEndsAt);
+        if (date < employee.HireDate) throw new DomainException("Attendance cannot precede the employee's hire date.");
+        if (await records.AnyAsync(x => x.EmployeeId == r.EmployeeId && x.ClockedOutAt == null, ct)) throw new DomainException("Employee already has an open attendance session.");
+        if (await records.AnyAsync(x => x.EmployeeId == r.EmployeeId && x.ClockedOutAt > at, ct)) throw new DomainException("Check-in cannot overlap or precede an existing attendance session.");
         var source = NormalizeSource(r.Source);
         var notes = NormalizeNotes(r.Notes);
         if (source == "admin" && notes is null) throw new DomainException("A reason is required for a manual attendance entry.");
         var x = new AttendanceRecord { TenantId = TenantId, EmployeeId = r.EmployeeId, WorkDate = date, ClockedInAt = at, Source = source, Notes = notes, ScheduledStartAt = policy.OfficeStartsAt, ScheduledEndAt = policy.OfficeEndsAt, RequiredMinutes = policy.RequiredMinutesPerDay, LateGraceMinutes = policy.LateGraceMinutes, EarlyDepartureGraceMinutes = policy.EarlyDepartureGraceMinutes, ClockInLatitude = r.Latitude, ClockInLongitude = r.Longitude, ClockInAccuracyMeters = r.AccuracyMeters, ClockInAddress = r.Address, ClockInIpAddress = r.IpAddress, ClockInUserAgent = r.UserAgent };
         await records.AddAsync(x, ct);
+        employee.UpdatedAt = DateTimeOffset.UtcNow;
         await unitOfWork.SaveChangesAsync(ct);
         return Map(x);
     }
     public async Task<AttendanceDto> ClockOutAsync(ClockRequest r, CancellationToken ct)
     {
         ValidateCoordinates(r);
-        var at = r.Timestamp ?? DateTimeOffset.UtcNow;
+        var at = r.Timestamp?.ToUniversalTime() ?? DateTimeOffset.UtcNow;
         if (at > DateTimeOffset.UtcNow.AddMinutes(5)) throw new DomainException("Check-out time cannot be in the future.");
         var open = await records.ListAsync(x => x.EmployeeId == r.EmployeeId && x.ClockedOutAt == null, q => q.OrderByDescending(x => x.ClockedInAt), take: 1, cancellationToken: ct);
         var x = open.FirstOrDefault() ?? throw new DomainException("No open clock-in exists for this employee.");
         if (NormalizeSource(r.Source) == "admin" && string.IsNullOrWhiteSpace(r.Notes)) throw new DomainException("A reason is required for a manual attendance entry.");
-        if (at <= x.ClockedInAt) throw new DomainException("Clock-out must be after clock-in.");
+        AttendanceCalendar.ValidateInterval(x.ClockedInAt!.Value, at);
+        if (await records.AnyAsync(other => other.EmployeeId == x.EmployeeId && other.Id != x.Id && other.ClockedInAt < at && (other.ClockedOutAt == null || other.ClockedOutAt > x.ClockedInAt), ct))
+            throw new DomainException("Attendance sessions cannot overlap.");
         x.ClockedOutAt = at;
         x.WorkHours = Math.Round((decimal)(at - x.ClockedInAt!.Value).TotalHours, 2);
         var earlierHours = (await records.ListAsync(session => session.EmployeeId == x.EmployeeId && session.WorkDate == x.WorkDate && session.Id != x.Id, cancellationToken: ct)).Sum(session => session.WorkHours);
@@ -577,14 +664,13 @@ public sealed class AttendanceService(IRepository<AttendanceRecord> records, IRe
     public async Task<IReadOnlyList<AttendancePolicyDto>> GetPolicyAsync(CancellationToken ct) => [MapPolicy(await Policy(ct))];
     public async Task<AttendancePolicyDto> UpdatePolicyAsync(UpdateAttendancePolicyRequest r, CancellationToken ct)
     {
-        var requiredMinutes = (int)(r.OfficeEndsAt.ToTimeSpan() - r.OfficeStartsAt.ToTimeSpan()).TotalMinutes;
-        if (requiredMinutes <= 0) throw new DomainException("Office end time must be after office start time.");
+        var requiredMinutes = AttendanceCalendar.DurationMinutes(r.OfficeStartsAt, r.OfficeEndsAt);
         if (r.LateGraceMinutes is < 0 or > 180 || r.EarlyDepartureGraceMinutes is < 0 or > 180) throw new DomainException("Grace periods must be between 0 and 180 minutes.");
         var days = r.WorkingDays.Select(x => x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (days.Length == 0 || days.Any(x => !Enum.TryParse<DayOfWeek>(x, true, out _))) throw new DomainException("Working days are invalid.");
+        if (days.Length == 0 || days.Any(x => !Enum.GetNames<DayOfWeek>().Contains(x, StringComparer.OrdinalIgnoreCase))) throw new DomainException("Working days are invalid.");
         var policy = await policies.FirstOrDefaultAsync(_ => true, ct);
         if (policy is null) { policy = new AttendancePolicy { TenantId = TenantId }; await policies.AddAsync(policy, ct); }
-        else if (r.Version > 0) CheckVersion(policy, r.Version);
+        else CheckVersion(policy, r.Version);
         policy.OfficeStartsAt = r.OfficeStartsAt; policy.OfficeEndsAt = r.OfficeEndsAt;
         policy.RequiredMinutesPerDay = requiredMinutes; policy.LateGraceMinutes = r.LateGraceMinutes;
         policy.EarlyDepartureGraceMinutes = r.EarlyDepartureGraceMinutes; policy.WorkingDaysCsv = string.Join(',', days); policy.RequireLocationCapture = r.RequireLocationCapture;
@@ -630,7 +716,7 @@ public sealed class AttendanceService(IRepository<AttendanceRecord> records, IRe
         foreach (var person in people)
         {
             var firstDate = person.HireDate > start ? person.HireDate : start;
-            for (var date = firstDate; date <= end && date <= today; date = date.AddDays(1))
+            for (var date = firstDate; date <= end && date <= today && (!person.TerminationDate.HasValue || date <= person.TerminationDate.Value); date = date.AddDays(1))
             {
                 sessionGroups.TryGetValue((person.Id, date), out var daySessions);
                 daySessions ??= [];
@@ -649,7 +735,8 @@ public sealed class AttendanceService(IRepository<AttendanceRecord> records, IRe
                 var first = daySessions.Where(x => x.ClockedInAt.HasValue).MinBy(x => x.ClockedInAt)?.ClockedInAt;
                 var last = daySessions.Where(x => x.ClockedOutAt.HasValue).MaxBy(x => x.ClockedOutAt)?.ClockedOutAt;
                 var open = daySessions.Where(x => x.ClockedOutAt is null && x.ClockedInAt.HasValue).ToArray();
-                var liveHours = open.Sum(x => Math.Max(0, (decimal)(DateTimeOffset.UtcNow - x.ClockedInAt!.Value).TotalHours));
+                var stale = open.Any(x => DateTimeOffset.UtcNow - x.ClockedInAt!.Value > TimeSpan.FromHours(24));
+                var liveHours = open.Where(x => DateTimeOffset.UtcNow - x.ClockedInAt!.Value <= TimeSpan.FromHours(24)).Sum(x => Math.Max(0, (decimal)(DateTimeOffset.UtcNow - x.ClockedInAt!.Value).TotalHours));
                 var total = Math.Round(daySessions.Sum(x => x.WorkHours) + liveHours, 2);
                 var snapshot = daySessions.OrderBy(x => x.ClockedInAt).First();
                 var scheduledStart = snapshot.ScheduledStartAt ?? policy.OfficeStartsAt;
@@ -657,15 +744,17 @@ public sealed class AttendanceService(IRepository<AttendanceRecord> records, IRe
                 var lateGrace = snapshot.LateGraceMinutes ?? policy.LateGraceMinutes;
                 var earlyGrace = snapshot.EarlyDepartureGraceMinutes ?? policy.EarlyDepartureGraceMinutes;
                 var requiredMinutes = snapshot.RequiredMinutes ?? policy.RequiredMinutesPerDay;
-                var firstTime = first.HasValue ? TimeOnly.FromDateTime(TimeZoneInfo.ConvertTime(first.Value, zone).DateTime) : (TimeOnly?)null;
-                var lastTime = last.HasValue ? TimeOnly.FromDateTime(TimeZoneInfo.ConvertTime(last.Value, zone).DateTime) : (TimeOnly?)null;
+                var firstTime = first.HasValue ? TimeZoneInfo.ConvertTime(first.Value, zone).DateTime : (DateTime?)null;
+                var lastTime = last.HasValue ? TimeZoneInfo.ConvertTime(last.Value, zone).DateTime : (DateTime?)null;
+                var schedule = AttendanceCalendar.Schedule(date, scheduledStart, scheduledEnd);
                 var required = isWorkingDay && !holiday && !onLeave ? Math.Round(requiredMinutes / 60m, 2) : 0;
-                var late = required > 0 && firstTime.HasValue ? Math.Max(0, (int)(firstTime.Value.ToTimeSpan() - scheduledStart.AddMinutes(lateGrace).ToTimeSpan()).TotalMinutes) : 0;
-                var early = required > 0 && lastTime.HasValue && open.Length == 0 ? Math.Max(0, (int)(scheduledEnd.AddMinutes(-earlyGrace).ToTimeSpan() - lastTime.Value.ToTimeSpan()).TotalMinutes) : 0;
+                var late = required > 0 && firstTime.HasValue ? Math.Max(0, (int)(firstTime.Value - schedule.Start.AddMinutes(lateGrace)).TotalMinutes) : 0;
+                var early = required > 0 && lastTime.HasValue && open.Length == 0 ? Math.Max(0, (int)(schedule.End.AddMinutes(-earlyGrace) - lastTime.Value).TotalMinutes) : 0;
                 var overtime = Math.Round(Math.Max(0, total - required), 2);
                 var shortfall = open.Length > 0 ? 0 : Math.Round(Math.Max(0, required - total), 2);
                 var issues = new List<string>();
-                if (open.Length > 0) issues.Add("In progress");
+                if (stale) issues.Add("Missing check-out · correction required");
+                else if (open.Length > 0) issues.Add("In progress");
                 else if (daySessions.Any(x => x.ClockedInAt.HasValue && x.ClockedOutAt.HasValue && x.ClockedOutAt.Value - x.ClockedInAt.Value > TimeSpan.FromHours(24))) issues.Add("Review required");
                 if (holiday) issues.Add("Worked on holiday"); else if (onLeave) issues.Add("Worked during approved leave");
                 if (late > 0) issues.Add("Late arrival");

@@ -1,4 +1,9 @@
 import { DatePipe } from '@angular/common';
+import { A11yModule } from '@angular/cdk/a11y';
+import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
+import { MatPaginatorModule } from '@angular/material/paginator';
+import { ActivatedRoute } from '@angular/router';
+import { SprintPanelComponent, WorkSprint } from './sprint-panel.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -24,7 +29,7 @@ import {
 } from '../../core/models';
 import { DocumentComponent } from '../../shared/document/document.component';
 
-type WorkTab = 'board' | 'list' | 'report' | 'projects';
+type WorkTab = 'board' | 'list' | 'sprints' | 'report' | 'projects';
 
 @Component({
   selector: 'app-work-page',
@@ -37,22 +42,32 @@ type WorkTab = 'board' | 'list' | 'report' | 'projects';
     MatMenuModule,
     MatProgressSpinnerModule,
     DocumentComponent,
+    A11yModule, DragDropModule, MatPaginatorModule, SprintPanelComponent,
   ],
   templateUrl: './work.page.html',
 })
 export class WorkPage implements OnInit {
   private readonly api = inject(ApiService);
   private readonly fb = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
   readonly auth = inject(AuthService);
 
   readonly tabs: { key: WorkTab; label: string; icon: string }[] = [
     { key: 'board', label: 'Board', icon: 'view_kanban' },
     { key: 'list', label: 'All work', icon: 'format_list_bulleted' },
+    { key: 'sprints', label: 'Sprints', icon: 'flag' },
     { key: 'report', label: 'Time report', icon: 'calendar_view_month' },
     { key: 'projects', label: 'Projects & access', icon: 'admin_panel_settings' },
   ];
-  readonly boardStatuses = ['Backlog', 'ToDo', 'InProgress', 'InReview', 'Done'];
-  readonly statuses = [...this.boardStatuses, 'Cancelled'];
+  readonly boardStatuses = ['Backlog', 'ToDo', 'InProgress', 'InReview', 'Done', 'Cancelled'];
+  readonly statuses = [...this.boardStatuses];
+  readonly boardPages = signal<Record<string, PagedResult<WorkItem>>>({});
+  readonly sprints = signal<WorkSprint[]>([]);
+  readonly sprintFilter = signal('');
+  readonly assigneeFilter = signal('');
+  readonly typeFilter = signal('');
+  readonly children = signal<WorkItem[]>([]);
+  private requestGeneration = 0;
   readonly priorities = ['Lowest', 'Low', 'Medium', 'High', 'Highest', 'Critical'];
   readonly types = ['Epic', 'Story', 'Task', 'Bug', 'Subtask'];
 
@@ -94,6 +109,8 @@ export class WorkPage implements OnInit {
     this.projects().find((project) => project.id === this.selectedProjectId()),
   );
   readonly canManage = computed(() => this.auth.hasPermission('work.manage'));
+  readonly canPlan = computed(() => !!this.selectedProject()?.isActive && (this.canManage() || (this.auth.hasPermission('work.assign') && !!this.currentAccess()?.canAssignItems)));
+  readonly canMoveOnBoard = computed(() => !!this.selectedProject()?.isActive && this.auth.hasPermission('work.transition') && (this.canManage() || !!this.currentAccess()?.canTransitionItems));
   readonly currentAccess = computed(() => this.members().find(member => member.employeeId === this.auth.user()?.employeeId));
   readonly actionAccess = computed(() => this.detailOpen() && !this.drawerOpen() ? this.detail()?.access : this.currentAccess());
   readonly actionProject = computed(() => this.detailOpen() && !this.drawerOpen()
@@ -152,6 +169,7 @@ export class WorkPage implements OnInit {
   setTab(tab: WorkTab): void {
     if (tab === 'projects' && !this.canManage()) return;
     this.activeTab.set(tab);
+    if (tab === 'board' || tab === 'list') this.loadItems();
     if (tab === 'report' && !this.report()) this.loadReport();
   }
 
@@ -173,27 +191,33 @@ export class WorkPage implements OnInit {
         if (result['employees']) this.employees.set((result['employees'] as PagedResult<Employee>).items);
         if (!this.selectedProjectId() && projects.length) this.selectedProjectId.set(projects[0].id);
         this.loadMembers();
+        this.loadSprints();
         this.loadItems();
+        const requestedItem = this.route.snapshot.queryParamMap.get('item');
+        if (requestedItem) this.openItem(requestedItem);
       },
       error: (error: HttpErrorResponse) => this.setError(error, 'Unable to load work management.'),
     });
   }
 
   loadItems(page = 1): void {
+    if (this.activeTab() === 'board') { this.loadBoard(); return; }
+    const generation = ++this.requestGeneration;
     this.itemsLoading.set(true);
     this.api.get<PagedResult<WorkItem>>('/work/items', {
-      page, pageSize: 100, search: this.search(), projectId: this.selectedProjectId(),
-      status: this.statusFilter(), priority: this.priorityFilter(),
-    }).pipe(finalize(() => this.itemsLoading.set(false))).subscribe({
-      next: (items) => this.items.set(items),
+      ...this.itemFilters(), page, pageSize: 25, status: this.statusFilter(),
+    }).pipe(finalize(() => { if (generation === this.requestGeneration) this.itemsLoading.set(false); })).subscribe({
+      next: (items) => { if (generation === this.requestGeneration) this.items.set(items); },
       error: (error: HttpErrorResponse) => this.setError(error, 'Unable to load work items.'),
     });
   }
 
   selectProject(id: string): void {
     this.selectedProjectId.set(id);
+    this.sprintFilter.set(''); this.assigneeFilter.set(''); this.boardPages.set({});
     this.reportForm.controls.projectId.setValue(id);
     this.loadMembers();
+    this.loadSprints();
     this.loadItems();
   }
 
@@ -221,7 +245,67 @@ export class WorkPage implements OnInit {
   }
 
   itemsFor(status: string): WorkItem[] {
-    return this.items().items.filter((item) => item.status === status);
+    return this.boardPages()[status]?.items ?? [];
+  }
+
+  private itemFilters() {
+    return { projectId: this.selectedProjectId(), search: this.search(), priority: this.priorityFilter(),
+      assigneeEmployeeId: this.assigneeFilter(), type: this.typeFilter(),
+      sprintId: this.sprintFilter() === 'backlog' ? '' : this.sprintFilter(), backlogOnly: this.sprintFilter() === 'backlog' };
+  }
+
+  loadBoard(): void {
+    const generation = ++this.requestGeneration;
+    this.itemsLoading.set(true);
+    forkJoin(this.boardStatuses.map(status => this.api.get<PagedResult<WorkItem>>('/work/items', { ...this.itemFilters(), status, page: 1, pageSize: 30 })))
+      .pipe(finalize(() => { if (generation === this.requestGeneration) this.itemsLoading.set(false); })).subscribe({
+        next: pages => { if (generation === this.requestGeneration) this.boardPages.set(Object.fromEntries(pages.map((page, index) => [this.boardStatuses[index], page]))); },
+        error: error => { if (generation === this.requestGeneration) this.setError(error, 'Unable to load the board.'); },
+      });
+  }
+
+  loadMore(status: string): void {
+    const current = this.boardPages()[status];
+    if (!current || current.page >= current.totalPages || this.itemsLoading()) return;
+    const generation = this.requestGeneration;
+    this.itemsLoading.set(true);
+    this.api.get<PagedResult<WorkItem>>('/work/items', { ...this.itemFilters(), status, page: current.page + 1, pageSize: 30 })
+      .pipe(finalize(() => { if (generation === this.requestGeneration) this.itemsLoading.set(false); })).subscribe({
+        next: page => { if (generation === this.requestGeneration) this.boardPages.update(all => ({ ...all, [status]: { ...page, items: [...current.items, ...page.items] } })); },
+        error: error => this.setError(error, 'Unable to load more work.'),
+      });
+  }
+
+  dropItem(event: CdkDragDrop<string>): void {
+    const item = event.item.data as WorkItem;
+    if (event.previousContainer === event.container || !this.canMoveOnBoard()) return;
+    if (!this.transitionOptions(item.status).includes(event.container.data)) {
+      this.error.set(`Move ${item.key} through its workflow. From ${this.statusLabel(item.status)}, choose ${this.transitionOptions(item.status).map(x => this.statusLabel(x)).join(' or ')}.`);
+      return;
+    }
+    this.transition(item, event.container.data);
+  }
+
+  loadSprints(): void {
+    const id = this.selectedProjectId();
+    if (!id) return;
+    this.api.get<WorkSprint[]>(`/work/projects/${id}/sprints`).subscribe({ next: rows => { if (id === this.selectedProjectId()) this.sprints.set(rows); }, error: e => this.setError(e, 'Unable to load sprints.') });
+  }
+
+  showSprint(id: string): void { this.sprintFilter.set(id); this.setTab('board'); }
+
+  planItem(sprintId: string): void {
+    const item = this.detail()?.item;
+    if (!item || !this.canPlan()) return;
+    this.runAction('sprint', this.api.put<WorkItem>(`/work/items/${item.id}/sprint`, { sprintId: sprintId || null, version: item.version }), updated => {
+      this.applyItem(updated); this.loadSprints(); this.loadItems(); this.refreshDetail(item.id); this.success.set(`${item.key} sprint updated.`);
+    }, 'Unable to plan work.');
+  }
+
+  createChild(): void {
+    const parent = this.detail()?.item;
+    if (!parent) return;
+    this.openCreate(); this.itemForm.patchValue({ parentId: parent.id, type: 'Subtask' });
   }
 
   openCreate(): void {
@@ -302,11 +386,16 @@ export class WorkPage implements OnInit {
   }
 
   openItem(id: string): void {
+    this.children.set([]);
     if (this.detail()?.item.id !== id) this.detail.set(null);
     this.detailOpen.set(true);
     this.detailLoading.set(true);
     this.api.get<WorkItemDetail>(`/work/items/${id}`).pipe(finalize(() => this.detailLoading.set(false))).subscribe({
-      next: (detail) => this.detail.set(detail),
+      next: (detail) => {
+        this.detail.set(detail);
+        if (this.selectedProjectId() !== detail.item.projectId) this.selectProject(detail.item.projectId);
+        this.api.get<WorkItem[]>(`/work/items/${id}/children`).subscribe({ next: children => { if (this.detail()?.item.id === id) this.children.set(children); }, error: e => this.setError(e, 'Unable to load child work.') });
+      },
       error: (error: HttpErrorResponse) => this.setError(error, 'Unable to load the work item.'),
     });
   }
@@ -319,6 +408,7 @@ export class WorkPage implements OnInit {
       this.applyItem(updated);
       this.success.set(`${updated.key} moved to ${this.statusLabel(status)}.`);
       this.refreshDetail(updated.id);
+      this.loadItems(); this.loadSprints();
     }, 'Unable to change status.');
   }
 

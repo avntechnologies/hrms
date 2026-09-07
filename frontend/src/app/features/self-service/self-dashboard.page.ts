@@ -1,6 +1,6 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -36,6 +36,10 @@ export class SelfDashboardPage implements OnInit, OnDestroy {
   readonly dashboard = signal<SelfDashboard | null>(null);
   readonly history = signal<AttendanceRecord[]>([]);
   readonly now = signal(new Date());
+  readonly needsCorrection = computed(() => {
+    const session = this.dashboard()?.todayAttendance;
+    return !!session?.clockedInAt && !session.clockedOutAt && this.now().getTime() - new Date(session.clockedInAt).getTime() > 24 * 60 * 60 * 1000;
+  });
   readonly profilePhotoUrl = signal<string | null>(null);
   private clockTimer?: number;
 

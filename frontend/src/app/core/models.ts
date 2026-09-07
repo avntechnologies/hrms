@@ -249,6 +249,7 @@ export interface WorkItem {
   projectKey: string;
   key: string;
   parentId?: string;
+  sprintId?: string;
   type: string;
   summary: string;
   status: string;

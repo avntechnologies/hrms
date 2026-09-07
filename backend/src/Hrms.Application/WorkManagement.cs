@@ -22,7 +22,7 @@ public sealed record WorkItemDto(Guid Id, Guid ProjectId, string ProjectKey, str
     WorkItemStatus Status, WorkItemPriority Priority, Guid? ReporterEmployeeId, string? ReporterName, Guid? AssigneeEmployeeId, string? AssigneeName,
     IReadOnlyList<Guid> AssigneeEmployeeIds, IReadOnlyList<string> AssigneeNames,
     DateOnly? DueDate, int? OriginalEstimateMinutes, int? RemainingEstimateMinutes, int LoggedMinutes, decimal? StoryPoints,
-    IReadOnlyList<string> Labels, WorkItemResolution? Resolution, DateTimeOffset? ResolvedAt, DateTimeOffset CreatedAt, long Version);
+    IReadOnlyList<string> Labels, WorkItemResolution? Resolution, DateTimeOffset? ResolvedAt, DateTimeOffset CreatedAt, long Version, Guid? SprintId = null);
 public sealed record WorkItemDetailDto(WorkItemDto Item, string? Description, IReadOnlyList<WorkCommentDto> Comments,
     IReadOnlyList<WorkLogDto> Worklogs, IReadOnlyList<WorkHistoryDto> History, WorkProjectMemberDto? Access);
 public sealed record CreateWorkCommentRequest(string Body);
@@ -43,7 +43,7 @@ public interface IWorkManagementService
     Task<WorkProjectDto> UpdateProjectAsync(Guid id, UpdateWorkProjectRequest request, CancellationToken ct);
     Task<IReadOnlyList<WorkProjectMemberDto>> ListMembersAsync(Guid projectId, CancellationToken ct);
     Task<IReadOnlyList<WorkProjectMemberDto>> SetMembersAsync(Guid projectId, IReadOnlyList<SetWorkProjectMemberRequest> requests, CancellationToken ct);
-    Task<PagedResult<WorkItemDto>> SearchItemsAsync(PagedRequest page, Guid? projectId, WorkItemStatus? status, WorkItemPriority? priority, Guid? assigneeEmployeeId, CancellationToken ct);
+    Task<PagedResult<WorkItemDto>> SearchItemsAsync(PagedRequest page, Guid? projectId, WorkItemStatus? status, WorkItemPriority? priority, Guid? assigneeEmployeeId, CancellationToken ct, Guid? sprintId = null, bool backlogOnly = false, WorkItemType? type = null);
     Task<WorkItemDetailDto> GetItemAsync(Guid id, CancellationToken ct);
     Task<WorkItemDto> CreateItemAsync(CreateWorkItemRequest request, CancellationToken ct);
     Task<WorkItemDto> UpdateItemAsync(Guid id, UpdateWorkItemRequest request, CancellationToken ct);
@@ -175,7 +175,7 @@ public sealed class WorkManagementService(
         return await ListMembersAsync(projectId, ct);
     }
 
-    public async Task<PagedResult<WorkItemDto>> SearchItemsAsync(PagedRequest page, Guid? projectId, WorkItemStatus? status, WorkItemPriority? priority, Guid? assigneeEmployeeId, CancellationToken ct)
+    public async Task<PagedResult<WorkItemDto>> SearchItemsAsync(PagedRequest page, Guid? projectId, WorkItemStatus? status, WorkItemPriority? priority, Guid? assigneeEmployeeId, CancellationToken ct, Guid? sprintId = null, bool backlogOnly = false, WorkItemType? type = null)
     {
         var allowed = await AllowedProjectIdsAsync(ct);
         var query = page.Search?.Trim().ToLowerInvariant();
@@ -183,6 +183,9 @@ public sealed class WorkManagementService(
             ? (await assignees.ListAsync(x => x.EmployeeId == assigneeEmployeeId.Value, cancellationToken: ct)).Select(x => x.WorkItemId).ToHashSet()
             : [];
         Expression<Func<WorkItem, bool>> predicate = x => allowed.Contains(x.ProjectId)
+            && (!sprintId.HasValue || x.SprintId == sprintId)
+            && (!backlogOnly || x.SprintId == null)
+            && (!type.HasValue || x.Type == type)
             && (!projectId.HasValue || x.ProjectId == projectId.Value)
             && (!status.HasValue || x.Status == status.Value)
             && (!priority.HasValue || x.Priority == priority.Value)
@@ -217,14 +220,19 @@ public sealed class WorkManagementService(
         var assigneeIds = NormalizeAssigneeIds(request.AssigneeEmployeeId, request.AssigneeEmployeeIds);
         foreach (var assigneeId in assigneeIds)
             await RequireAssignableAsync(request.ProjectId, assigneeId, access, ct);
-        var reporterId = request.ReporterEmployeeId;
+        var reporterId = request.ReporterEmployeeId ?? user.EmployeeId;
         if (reporterId.HasValue) await RequireEmployeeAsync(reporterId.Value, ct);
         if (request.ParentId.HasValue)
         {
             var parent = await RequireItemAsync(request.ParentId.Value, ct);
             if (parent.ProjectId != request.ProjectId)
                 throw new DomainException("Parent and child items must belong to the same project.");
+            if (parent.Status is WorkItemStatus.Done or WorkItemStatus.Cancelled)
+                throw new DomainException("Reopen the parent before adding child work.");
+            if (parent.Type == WorkItemType.Subtask || request.Type == WorkItemType.Epic)
+                throw new DomainException("Epics cannot be children and subtasks cannot contain child work.");
         }
+        else if (request.Type == WorkItemType.Subtask) throw new DomainException("A subtask requires a parent item.");
         ValidateEstimate(request.OriginalEstimateMinutes, request.StoryPoints);
         var number = project.NextItemNumber++;
         var item = new WorkItem
@@ -313,6 +321,9 @@ public sealed class WorkManagementService(
             throw new DomainException($"Items cannot move directly from {item.Status} to {request.Status}.");
         if (request.Resolution.HasValue && !Enum.IsDefined(request.Resolution.Value))
             throw new DomainException("Resolution is invalid.");
+        if (request.Status == WorkItemStatus.Done && await items.AnyAsync(x => x.ParentId == id && x.Status != WorkItemStatus.Done && x.Status != WorkItemStatus.Cancelled, ct))
+            throw new DomainException("Complete or cancel all child items before completing the parent.");
+        if (item.Status == request.Status) return (await MapItemsAsync([item], ct))[0];
         var before = item.Status;
         item.Status = request.Status;
         if (request.Status is WorkItemStatus.Done or WorkItemStatus.Cancelled)
@@ -573,7 +584,7 @@ public sealed class WorkManagementService(
         || (user.HasPermission(Permissions.WorkViewAllLogs) && access?.CanViewAllWorklogs == true);
 
     private bool CanManageOwn(Guid? employeeId) =>
-        user.HasPermission(Permissions.WorkManage) || employeeId == user.EmployeeId;
+        user.HasPermission(Permissions.WorkManage) || (employeeId.HasValue && employeeId == user.EmployeeId);
 
     private async Task<WorkItemComment> AddCommentInternalAsync(Guid itemId, string body, CancellationToken ct)
     {
@@ -657,7 +668,7 @@ public sealed class WorkManagementService(
                 x.Type, x.Summary, x.Status, x.Priority, x.ReporterEmployeeId, Name(people, x.ReporterEmployeeId),
                 x.AssigneeEmployeeId, Name(people, x.AssigneeEmployeeId), assignedIds, assigneeNames, x.DueDate, x.OriginalEstimateMinutes,
                 x.RemainingEstimateMinutes, totals.GetValueOrDefault(x.Id), x.StoryPoints, SplitLabels(x.LabelsCsv),
-                x.Resolution, x.ResolvedAt, x.CreatedAt, x.Version);
+                x.Resolution, x.ResolvedAt, x.CreatedAt, x.Version, x.SprintId);
         }).ToArray();
     }
 

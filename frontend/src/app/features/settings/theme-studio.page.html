@@ -39,7 +39,7 @@
                   @if (savingProfile()) { <mat-spinner diameter="17" /> } @else { <mat-icon>save</mat-icon> } Save profile
                 </button>
               </div>
-            } @else {
+            } @else { 
               <div class="field"><label>Display name</label><input [value]="auth.user()?.displayName" readonly /></div>
               <div class="field"><label>Account email</label><input [value]="auth.user()?.email" readonly /></div>
               <p class="account-profile-note">Name and email are controlled by account administrators.</p>

@@ -32,8 +32,13 @@ describe('HRMS module registry', () => {
       for (const view of module.views) {
         if (view.createLabel) expect(view.createEndpoint).toBeTruthy();
         for (const action of [...(view.toolbarActions ?? []), ...(view.rowActions ?? [])]) {
-          expect(action.path.startsWith('/')).toBe(true);
-          expect(['get', 'post', 'put', 'delete']).toContain(action.method);
+          if (action.path) {
+            expect(action.path.startsWith('/')).toBe(true);
+            expect(['get', 'post', 'put', 'delete']).toContain(action.method);
+          } else {
+            expect(action.method).toBe('documents');
+            expect(action.documentOwnerType).toBeTruthy();
+          }
         }
       }
     }

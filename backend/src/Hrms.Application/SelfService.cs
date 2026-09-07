@@ -48,7 +48,17 @@ public sealed class SelfService(
         var employee = await Employee(ct);
         var today = await TenantToday(ct);
         var todayRows = await attendance.ListAsync(x => x.EmployeeId == employee.Id && x.WorkDate == today, q => q.OrderByDescending(x => x.ClockedInAt), cancellationToken: ct);
-        var todayAttendance = todayRows.FirstOrDefault();
+        // An open session can have started before the tenant's current date (for
+        // example, when an employee forgot to check out). Clock-in validation
+        // considers that session open, so the self-service dashboard must surface
+        // it as well; otherwise it incorrectly offers another check-in that the
+        // API will reject.
+        var openRows = await attendance.ListAsync(
+            x => x.EmployeeId == employee.Id && x.ClockedOutAt == null,
+            q => q.OrderByDescending(x => x.ClockedInAt),
+            take: 1,
+            cancellationToken: ct);
+        var todayAttendance = openRows.FirstOrDefault() ?? todayRows.FirstOrDefault();
         var todayTotalHours = Math.Round(todayRows.Sum(x => x.WorkHours) + todayRows.Where(x => x.ClockedOutAt == null && x.ClockedInAt.HasValue).Sum(x => Math.Max(0, (decimal)(DateTimeOffset.UtcNow - x.ClockedInAt!.Value).TotalHours)), 2);
         var pendingLeave = await leaveRequests.CountAsync(x => x.EmployeeId == employee.Id && x.Status == LeaveRequestStatus.Pending, ct);
         var balances = await leaveService.GetBalancesAsync(employee.Id, today.Year, ct);

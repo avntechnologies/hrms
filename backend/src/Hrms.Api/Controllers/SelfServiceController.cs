@@ -5,6 +5,13 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Hrms.Api.Controllers;
 
+[ApiController, Route("api/v1/me/leave"), Authorize(Policy = Permissions.SelfService)]
+public sealed class SelfLeaveCancellationController(ILeaveService service) : ControllerBase
+{
+    [HttpPut("{id:guid}/cancel")]
+    public Task<LeaveRequestDto> Cancel(Guid id, [FromQuery] long version, CancellationToken ct) => service.CancelAsync(id, version, ct);
+}
+
 [ApiController, Route("api/v1/me"), Authorize(Policy = "EmployeeLinked"), Authorize(Policy = Permissions.SelfService)]
 public sealed class SelfServiceController(ISelfService service) : ControllerBase
 {

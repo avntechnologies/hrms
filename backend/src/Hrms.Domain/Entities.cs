@@ -444,6 +444,7 @@ public sealed class WorkItem : TenantEntity
     public int Number { get; set; }
     public string Key { get; set; } = string.Empty;
     public Guid? ParentId { get; set; }
+    public Guid? SprintId { get; set; }
     public WorkItemType Type { get; set; } = WorkItemType.Task;
     public string Summary { get; set; } = string.Empty;
     public string? Description { get; set; }
@@ -458,6 +459,35 @@ public sealed class WorkItem : TenantEntity
     public string LabelsCsv { get; set; } = string.Empty;
     public WorkItemResolution? Resolution { get; set; }
     public DateTimeOffset? ResolvedAt { get; set; }
+}
+
+public sealed class AttendanceCorrection : TenantEntity
+{
+    public Guid EmployeeId { get; set; }
+    public Guid? AttendanceRecordId { get; set; }
+    public long? OriginalRecordVersion { get; set; }
+    public DateOnly WorkDate { get; set; }
+    public DateTimeOffset RequestedClockIn { get; set; }
+    public DateTimeOffset RequestedClockOut { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public WorkflowStatus Status { get; set; } = WorkflowStatus.Pending;
+    public Guid? ReviewedBy { get; set; }
+    public DateTimeOffset? ReviewedAt { get; set; }
+    public string? ReviewComment { get; set; }
+}
+
+public enum SprintStatus { Planned, Active, Completed }
+
+public sealed class WorkSprint : TenantEntity
+{
+    public Guid ProjectId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Goal { get; set; }
+    public DateOnly StartsOn { get; set; }
+    public DateOnly EndsOn { get; set; }
+    public SprintStatus Status { get; set; }
+    public DateTimeOffset? StartedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
 }
 
 public sealed class AttendancePolicy : TenantEntity

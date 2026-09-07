@@ -31,6 +31,7 @@ public static class DependencyInjection
         var jwt = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
         if (Encoding.UTF8.GetByteCount(jwt.SigningKey) < 32) throw new InvalidOperationException("Jwt:SigningKey must be at least 32 bytes.");
         services.AddSingleton<ITokenService, JwtTokenService>();
+        services.AddScoped<SessionValidator>();
         services.AddSingleton<IDocumentStorage, LocalDocumentStorage>();
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
         {
@@ -44,6 +45,11 @@ public static class DependencyInjection
             };
             options.Events = new JwtBearerEvents
             {
+                OnTokenValidated = async context =>
+                {
+                    if (context.Principal is null || !await context.HttpContext.RequestServices.GetRequiredService<SessionValidator>()
+                        .ValidateAsync(context.Principal, context.HttpContext.RequestAborted)) context.Fail("This session is no longer valid.");
+                },
                 OnMessageReceived = context =>
                 {
                     var accessToken = context.Request.Query["access_token"];
@@ -70,6 +76,8 @@ public static class DependencyInjection
         services.AddScoped<IExpenseService, ExpenseService>(); services.AddScoped<ITrainingService, TrainingService>();
         services.AddScoped<IDashboardService, DashboardService>(); services.AddScoped<IAuditReader, AuditReader>();
         services.AddScoped<ISelfService, SelfService>();
+        services.AddScoped<AttendanceCorrectionService>();
+        services.AddScoped<WorkPlanningService>();
         services.AddScoped<IWorkManagementService, WorkManagementService>();
         services.AddScoped<IDocumentService, DocumentService>();
         services.AddScoped<INotificationService, NotificationService>();
